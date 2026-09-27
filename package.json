@@ -1,0 +1,19 @@
+{
+  "name": "hafentraining",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hafenmanöver-Simulator für Yachten (2D Topview) – läuft im Browser, deploybar auf GitHub Pages",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  }
+}

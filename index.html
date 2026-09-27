@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="description" content="Hafenmanöver-Simulator: Yacht in der Boxengasse anlegen – mit Wind, Strömung, Radeffekt, Massenträgheit und Leinenarbeit." />
+    <title>Hafentraining – Manöver-Simulator</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d5e7e'/%3E%3Cpath d='M16 4c4 5 6 11 6 17l-2 7h-8l-2-7c0-6 2-12 6-17z' fill='%23fff'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">⚓ Hafentraining <span class="sub">Boxengasse</span></div>
+      <nav class="actions">
+        <button id="btn-reset" title="Neustart (R)">↺ Neustart</button>
+        <button id="btn-pause" title="Pause (P)">⏸ Pause</button>
+        <button id="btn-speed" title="Zeitraffer (T)">1×</button>
+        <button id="btn-follow" class="on" title="Kamera folgt dem Boot (V)">🎯 Folgen</button>
+        <button id="btn-forces" title="Kräfte anzeigen (K)">➶ Kräfte</button>
+        <button id="btn-env" title="Wind, Strömung, Zielbox">🌬 Bedingungen</button>
+        <button id="btn-yacht" title="Yacht konfigurieren">⛵ Yacht</button>
+        <button id="btn-help" title="Hilfe (?)">?</button>
+      </nav>
+    </header>
+
+    <main class="stage">
+      <canvas id="view" aria-label="Hafen in der Draufsicht"></canvas>
+
+      <div class="helm-controls" aria-label="Steuerung">
+        <div class="throttle">
+          <span class="lbl">Voraus</span>
+          <input id="ctl-throttle" type="range" min="-100" max="100" step="1" value="0" orient="vertical" aria-label="Gashebel" />
+          <span class="lbl">Zurück</span>
+          <output id="out-throttle">N</output>
+        </div>
+        <div class="wheel">
+          <output id="out-helm">Ruder mittschiffs</output>
+          <input id="ctl-helm" type="range" min="-100" max="100" step="1" value="0" aria-label="Ruder" />
+          <div class="wheel-lbl"><span>Bb</span><button id="btn-center" title="Ruder mittschiffs (C)">mittschiffs</button><span>Stb</span></div>
+          <div class="thruster" id="thruster-box" hidden>
+            <button id="btn-bt-p" title="Bugstrahlruder: Bug nach Bb (Q)">⟵ Bug</button>
+            <span>Bugstrahl</span>
+            <button id="btn-bt-s" title="Bugstrahlruder: Bug nach Stb (E)">Bug ⟶</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="banner" class="banner" hidden></div>
+    </main>
+
+    <aside class="panel">
+      <section>
+        <h2>Aufgabe</h2>
+        <p id="task-target" class="target"></p>
+        <p id="task-msg" class="task-msg"></p>
+        <div class="kv small">
+          <span>Zeit</span><b id="st-time">0:00</b>
+          <span>Kontakte</span><b id="st-contacts">0</b>
+          <span>max. Aufprall</span><b id="st-impact">0.0 kn</b>
+        </div>
+      </section>
+
+      <section>
+        <h2>Instrumente</h2>
+        <div class="kv">
+          <span>Fahrt ü. Grund</span><b id="in-sog">0.0 kn</b>
+          <span>Fahrt d. Wasser</span><b id="in-stw">0.0 kn</b>
+          <span>Kurs</span><b id="in-hdg">000°</b>
+          <span>Drehrate</span><b id="in-rot">0 °/s</b>
+          <span>Maschine</span><b id="in-engine">N · 800 U/min</b>
+          <span>Schub</span><b id="in-thrust">0 N</b>
+          <span>Wind wahr</span><b id="in-tw">–</b>
+          <span>Wind scheinbar</span><b id="in-aw">–</b>
+        </div>
+        <div class="rudder-gauge" aria-hidden="true"><div id="in-rudder-bar"></div><span class="mid"></span></div>
+      </section>
+
+      <section>
+        <h2>Leinen</h2>
+        <p class="hint" id="line-hint">Klampe am Boot anklicken, dann Dalbe oder Klampe an Land (innerhalb der Wurfweite).</p>
+        <div id="lines"></div>
+      </section>
+
+      <section class="log-section">
+        <h2>Logbuch</h2>
+        <ol id="log" class="log"></ol>
+      </section>
+    </aside>
+
+    <dialog id="dlg-help">
+      <form method="dialog">
+        <h2>Bedienung</h2>
+        <div class="help-grid">
+          <div>
+            <h3>Boot</h3>
+            <ul>
+              <li><kbd>↑</kbd>/<kbd>W</kbd> Gas voraus, <kbd>↓</kbd>/<kbd>S</kbd> Gas zurück (Einrasten in Neutral)</li>
+              <li><kbd>Leertaste</kbd> Neutral</li>
+              <li><kbd>←</kbd>/<kbd>A</kbd> Ruder nach Bb, <kbd>→</kbd>/<kbd>D</kbd> Ruder nach Stb</li>
+              <li><kbd>C</kbd> Ruder mittschiffs</li>
+              <li><kbd>Q</kbd>/<kbd>E</kbd> Bugstrahlruder (falls vorhanden)</li>
+            </ul>
+            <h3>Leinen</h3>
+            <ul>
+              <li>Klampe am Boot anklicken → Festpunkt anklicken</li>
+              <li><kbd>1</kbd>…<kbd>9</kbd> Leine wählen</li>
+              <li><kbd>G</kbd> von Hand halten · <kbd>H</kbd> dichtholen · <kbd>F</kbd> fieren · <kbd>B</kbd> belegen · <kbd>L</kbd> loswerfen</li>
+              <li><kbd>Esc</kbd> Auswahl aufheben</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Ansicht</h3>
+            <ul>
+              <li>Ziehen: Karte verschieben · Mausrad/Pinch: Zoom</li>
+              <li><kbd>V</kbd> Kamera folgt · <kbd>K</kbd> Kräfte · <kbd>P</kbd> Pause · <kbd>T</kbd> Zeitraffer · <kbd>R</kbd> Neustart</li>
+            </ul>
+            <h3>Ziel</h3>
+            <p>Die grün markierte Box ansteuern, mit zwei Leinen an den Dalben und zwei Leinen an den Stegklampen festmachen (belegen), Maschine in Neutral. Bug oder Heck zum Steg ist beides erlaubt.</p>
+            <h3>Physik</h3>
+            <p>Verdrängung und Zusatzmasse, Kielform und Lateralplan, Radeffekt, Schraubenstrahl aufs Ruder, Wind mit Böen (Bug fällt ab), Strömung, Leinenelastizität. Gasgeben gegen eine belegte Leine = Eindampfen.</p>
+          </div>
+        </div>
+        <menu><button value="close" class="primary">Los geht's</button></menu>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-env">
+      <form method="dialog" id="form-env" novalidate>
+        <h2>Bedingungen</h2>
+        <div class="form-grid">
+          <label>Windstärke [kn]<input name="windSpeedKn" type="number" min="0" max="40" step="1" /></label>
+          <label>Wind aus [°]<input name="windFromDeg" type="number" min="0" max="359" step="5" /></label>
+          <label>Böigkeit [0–1]<input name="gustiness" type="number" min="0" max="1" step="0.05" /></label>
+          <label>Winddreher ± [°]<input name="windShiftDeg" type="number" min="0" max="45" step="1" /></label>
+          <label>Strömung [kn]<input name="currentSpeedKn" type="number" min="0" max="4" step="0.1" /></label>
+          <label>Strömung nach [°]<input name="currentTowardDeg" type="number" min="0" max="359" step="5" /></label>
+          <label>Zielbox<select name="target" id="sel-target"></select></label>
+          <label>Wurfweite Dalbe [m]<input name="throwPile" type="number" min="1" max="15" step="0.5" /></label>
+          <label>Wurfweite Stegklampe [m]<input name="throwBollard" type="number" min="1" max="15" step="0.5" /></label>
+        </div>
+        <div class="presets">
+          <span>Schnellwahl:</span>
+          <button type="button" data-env="calm">Flaute</button>
+          <button type="button" data-env="cross">Seitenwind 15 kn</button>
+          <button type="button" data-env="behind">Rückenwind 12 kn</button>
+          <button type="button" data-env="storm">Starkwind 25 kn</button>
+        </div>
+        <menu>
+          <button value="cancel" formnovalidate>Abbrechen</button>
+          <button value="apply" class="primary">Übernehmen &amp; neu starten</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-yacht">
+      <form method="dialog" id="form-yacht" novalidate>
+        <h2>Yacht konfigurieren</h2>
+        <label class="preset-row">Vorlage
+          <select id="sel-preset"></select>
+        </label>
+        <div id="yacht-fields"></div>
+        <p id="yacht-errors" class="errors"></p>
+        <details>
+          <summary>JSON Export / Import</summary>
+          <textarea id="yacht-json" rows="10" spellcheck="false"></textarea>
+          <div class="row"><button type="button" id="btn-json-export">Aktuelle Werte → JSON</button><button type="button" id="btn-json-import">JSON übernehmen</button></div>
+        </details>
+        <menu>
+          <button value="cancel" formnovalidate>Abbrechen</button>
+          <button value="apply" class="primary">Übernehmen &amp; neu starten</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
