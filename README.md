@@ -52,12 +52,12 @@ Strip-Theorie für den Lateralplan. Integration mit festem Schritt 1/240 s.
 | **Maschine** | Standschub aus Leistung und Propeller-Ø (Impulstheorie), Schub fällt mit Fortschrittsgeschwindigkeit, Rückwärtsschub reduziert, Leerlauf eingekuppelt ≈ 2–3 kn, **Schaltverzögerung über Neutral**, Drehzahlträgheit. |
 | **Wind** | Seiten-/Frontfläche, scheinbarer Wind, Angriffspunkt wandert zum Luv-Ende → **Bug fällt ab**. Böen und Winddreher als Ornstein-Uhlenbeck-Prozess (reproduzierbar per Seed). |
 | **Strömung** | Alle hydrodynamischen Kräfte rechnen mit Fahrt durchs Wasser; Zusatzmassen-Terme mit Relativgeschwindigkeit. |
-| **Leinen** | Elastisch (EA/L), nur Zug, Dämpfung. Crew hält von Hand (rutscht über ~450 N durch), holt dicht, fiert, belegt, wirft los. Wurfweite je Festpunkt (Dalbe 6 m, Stegklampe 7 m, einstellbar). **Eindampfen** entsteht physikalisch aus Leinenkraft + Schub + Ruder. |
+| **Leinen** | Elastisch (EA/L), nur Zug, Dämpfung. Crew hält (Törn um die Klampe, rutscht erst über ~1500 N durch), holt dicht (bis ~900 N, unter Last langsamer), fiert (Leine läuft kontrolliert aus, Zug bleibt bei ~150 N), belegt, wirft los. Wurfweite je Festpunkt (Dalbe 6 m, Stegklampe 7 m, einstellbar). **Eindampfen** entsteht physikalisch aus Leinenkraft + Schub + Ruder. |
 | **Kontakte** | Rumpfkontur gegen Dalben, Stege, Kaimauer und andere Boote (Feder/Dämpfer + Reibung), Aufprallgeschwindigkeit wird bewertet. |
 
 Kalibrierung (automatisierte Tests in `src/physics/yacht.test.ts`): Höchstfahrt
 6–7,5 kn, Standgas 2–3,5 kn, Auslaufen aus 4 kn > 2 Bootslängen, Drehkreis
-≈ 2 Bootslängen, Driftgeschwindigkeit 15 kn Wind querab 0,5–2 kn, Radeffekt
+≈ 1,5 Bootslängen (Spatenruder im Schraubenstrahl), Driftgeschwindigkeit 15 kn Wind querab 0,5–2 kn, Radeffekt
 rückwärts Heck nach Bb (rechtsdrehend), Eindampfen in die Vorspring schwenkt
 das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 (`src/physics/yacht.ts`).

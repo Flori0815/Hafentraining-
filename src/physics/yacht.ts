@@ -77,7 +77,7 @@ export const TUNING = {
   /** Anteil des potentialtheoretischen Munk-Moments (viskose Abminderung) */
   munk: 0.5,
   /** Geschwindigkeit im Schraubenstrahl am Ruder / Fernfeld-Zusatzgeschw. */
-  slipstream: 0.5,
+  slipstream: 0.6,
   /** Radeffekt-Querkraft / Schub (voraus, achteraus) */
   propWalkAhead: 0.03,
   propWalkAstern: 0.3,
@@ -86,6 +86,9 @@ export const TUNING = {
   keelCrossCd: 1.1,
   /** Linearer Rumpfauftrieb bei Schräganströmung */
   hullLift: 1,
+  /** Windkraftbeiwerte längs / quer (Yachten typ. 0.6–0.8 / 0.8–0.9) */
+  windCx: 0.75,
+  windCy: 0.85,
 };
 
 /**
@@ -313,8 +316,8 @@ export class Yacht {
     const aw = Math.hypot(ax, ay);
     if (aw > 1e-3) {
       const q = 0.5 * RHO_AIR * aw;
-      const fx = q * cfg.windage.frontalArea * 0.75 * ax;
-      const fy = q * cfg.windage.lateralArea * 1.0 * ay;
+      const fx = q * cfg.windage.frontalArea * TUNING.windCx * ax;
+      const fy = q * cfg.windage.lateralArea * TUNING.windCy * ay;
       // Angriffspunkt wandert zum Luv-Ende (Wind von vorn: nach vorn)
       const ce = m.windCeX + cfg.windage.ceShift * (-ax / aw);
       apply('wind', { x: ce, y: 0 }, fx, fy);

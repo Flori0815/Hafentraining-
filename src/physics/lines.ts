@@ -24,10 +24,12 @@ export interface ShoreAnchor {
 export interface LineSettings {
   /** Wurfweiten je Festpunkt-Typ [m] */
   throwRange: Record<AnchorKind, number>;
-  /** Haltekraft der Crew von Hand [N] */
+  /** Haltekraft beim Halten (Törn um Klampe/Poller, Crew hält gegen) [N] */
   handHoldForce: number;
-  /** Maximale Zugkraft beim Dichtholen von Hand [N] */
+  /** Maximale Zugkraft beim Dichtholen (kräftig bzw. über die Winsch) [N] */
   handPullForce: number;
+  /** Bremskraft beim Fieren: die Leine läuft kontrolliert aus [N] */
+  easeForce: number;
   /** Einholgeschwindigkeit [m/s] */
   heaveRate: number;
   /** Fiergeschwindigkeit [m/s] */
@@ -42,8 +44,9 @@ export interface LineSettings {
 
 export const DEFAULT_LINE_SETTINGS: LineSettings = {
   throwRange: { pile: 6, bollard: 7, ring: 1.8 },
-  handHoldForce: 450,
-  handPullForce: 350,
+  handHoldForce: 1500,
+  handPullForce: 900,
+  easeForce: 150,
   heaveRate: 0.45,
   easeRate: 0.5,
   maxLength: 25,
@@ -62,6 +65,16 @@ export interface MooringLine {
   /** Momentane Überlänge (Durchhang) [m], > 0 = lose */
   slack: number;
   broken: boolean;
+}
+
+/**
+ * Leine rutscht durch (Hände, Klampe), sobald der Zug `limit` übersteigt:
+ * Länge wächst höchstens um `maxStep`, zurückgegeben wird der begrenzte Zug.
+ */
+function slipAbove(line: MooringLine, tension: number, limit: number, k: number, maxStep: number): number {
+  if (tension <= limit) return tension;
+  line.length += Math.min((tension - limit) / k, maxStep);
+  return limit;
 }
 
 export class LineSystem {
@@ -145,22 +158,20 @@ export class LineSystem {
       // Crew/Modus: Länge anpassen
       switch (line.mode) {
         case 'hand':
-          if (tension > s.handHoldForce) {
-            // Leine rutscht durch die Hände: Länge wächst so, dass die Kraft begrenzt ist
-            line.length += Math.min((tension - s.handHoldForce) / k, 1.5 * dt);
-            tension = s.handHoldForce;
-          }
+          tension = slipAbove(line, tension, s.handHoldForce, k, 1.5 * dt);
           break;
         case 'heave':
           if (tension < s.handPullForce) {
-            line.length -= s.heaveRate * dt;
-          } else if (tension > s.handHoldForce) {
-            line.length += Math.min((tension - s.handHoldForce) / k, 1.5 * dt);
-            tension = s.handHoldForce;
+            // unter Last wird langsamer eingeholt
+            line.length -= s.heaveRate * (1 - tension / s.handPullForce) * dt;
+          } else {
+            tension = slipAbove(line, tension, s.handHoldForce, k, 1.5 * dt);
           }
           break;
         case 'ease':
-          if (tension > 20) line.length += s.easeRate * dt;
+          // kontrolliert auslaufen lassen: Zug bleibt gering
+          if (tension > s.easeForce) tension = slipAbove(line, tension, s.easeForce, k, 2.5 * dt);
+          else if (tension > 20) line.length += s.easeRate * dt;
           break;
         case 'cleated':
           break;
