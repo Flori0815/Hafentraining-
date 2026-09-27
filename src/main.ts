@@ -2,6 +2,7 @@ import { buildBoxengasse } from './harbor/harbor';
 import { DEFAULT_ENV, type EnvironmentSettings } from './physics/environment';
 import { DEFAULT_LINE_SETTINGS, type LineMode, type LineSettings, type ShoreAnchor } from './physics/lines';
 import { KN, clamp, type Vec2 } from './physics/vec';
+import { IDLE_LEVER, NEUTRAL_ZONE } from './physics/yacht';
 import { SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from './physics/yachtConfig';
 import { Renderer, type Interaction } from './render/renderer';
 import { Simulation, formatTime } from './sim/simulation';
@@ -68,6 +69,9 @@ helmInput.addEventListener('input', () => {
   sim.yacht.controls.helm = Number(helmInput.value) / 100;
 });
 $('btn-center').addEventListener('click', () => setHelm(0));
+$('btn-idle-fwd').addEventListener('click', () => setThrottle(IDLE_LEVER));
+$('btn-neutral').addEventListener('click', () => setThrottle(0));
+$('btn-idle-back').addEventListener('click', () => setThrottle(-IDLE_LEVER));
 
 function bindThruster(id: string, dir: number): void {
   const b = $(id);
@@ -93,6 +97,11 @@ window.addEventListener('keydown', (e) => {
   if ((e.target as HTMLElement).closest('dialog, input, select, textarea') && !(e.target as HTMLElement).matches('input[type=range]')) return;
   const k = e.key.toLowerCase();
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+  // Shift+↑/↓: direkt eingekuppelt im Standgas (nicht als gehaltene Gas-Taste werten)
+  if (e.shiftKey && (k === 'arrowup' || k === 'arrowdown')) {
+    if (!e.repeat) setThrottle(k === 'arrowup' ? IDLE_LEVER : -IDLE_LEVER);
+    return;
+  }
   if (e.repeat && !['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) return;
   keys.add(k);
   switch (k) {
@@ -555,7 +564,12 @@ function renderPanel(): void {
   if (document.activeElement !== throttleInput) throttleInput.value = String(Math.round(y.controls.throttle * 100));
   if (document.activeElement !== helmInput) helmInput.value = String(Math.round(y.controls.helm * 100));
   const thr = y.controls.throttle;
-  $('out-throttle').textContent = Math.abs(thr) < 0.1 ? 'N' : `${thr > 0 ? 'V' : 'Z'} ${Math.round(Math.abs(thr) * 100)}%`;
+  const atIdle = Math.abs(Math.abs(thr) - IDLE_LEVER) < 0.006;
+  $('out-throttle').textContent =
+    Math.abs(thr) <= NEUTRAL_ZONE ? 'N' : `${thr > 0 ? 'V' : 'Z'} ${atIdle ? 'Leerl.' : `${Math.round(Math.abs(thr) * 100)}%`}`;
+  $('btn-idle-fwd').classList.toggle('on', atIdle && thr > 0);
+  $('btn-neutral').classList.toggle('on', Math.abs(thr) <= NEUTRAL_ZONE);
+  $('btn-idle-back').classList.toggle('on', atIdle && thr < 0);
   const rdeg = (st.rudder * 180) / Math.PI;
   $('out-helm').textContent = Math.abs(rdeg) < 0.5 ? 'Ruder mittschiffs' : `Ruder ${Math.abs(rdeg).toFixed(0)}° ${rdeg > 0 ? 'Stb' : 'Bb'}`;
 

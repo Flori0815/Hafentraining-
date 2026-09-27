@@ -32,6 +32,11 @@
           <input id="ctl-throttle" type="range" min="-100" max="100" step="1" value="0" orient="vertical" aria-label="Gashebel" />
           <span class="lbl">Zurück</span>
           <output id="out-throttle">N</output>
+          <div class="throttle-quick">
+            <button type="button" id="btn-idle-fwd" title="Eingekuppelt voraus, Standgas (Shift+↑)">▲ Leerl.</button>
+            <button type="button" id="btn-neutral" title="Neutral (Leertaste)">N</button>
+            <button type="button" id="btn-idle-back" title="Eingekuppelt zurück, Standgas (Shift+↓)">▼ Leerl.</button>
+          </div>
         </div>
         <div class="wheel">
           <output id="out-helm">Ruder mittschiffs</output>
@@ -95,7 +100,7 @@
             <h3>Boot</h3>
             <ul>
               <li><kbd>↑</kbd>/<kbd>W</kbd> Gas voraus, <kbd>↓</kbd>/<kbd>S</kbd> Gas zurück (Einrasten in Neutral)</li>
-              <li><kbd>Leertaste</kbd> Neutral</li>
+              <li><kbd>Leertaste</kbd> Neutral · <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> eingekuppelt Standgas voraus/zurück</li>
               <li><kbd>←</kbd>/<kbd>A</kbd> Ruder nach Bb, <kbd>→</kbd>/<kbd>D</kbd> Ruder nach Stb</li>
               <li><kbd>C</kbd> Ruder mittschiffs</li>
               <li><kbd>Q</kbd>/<kbd>E</kbd> Bugstrahlruder (falls vorhanden)</li>
