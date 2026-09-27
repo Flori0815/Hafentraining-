@@ -1,4 +1,4 @@
-import { buildBoxengasse } from './harbor/harbor';
+import { SCENARIOS, buildScenario, type Harbor } from './harbor/harbor';
 import { DEFAULT_ENV, type EnvironmentSettings } from './physics/environment';
 import { DEFAULT_LINE_SETTINGS, type LineMode, type LineSettings, type ShoreAnchor } from './physics/lines';
 import { KN, clamp, type Vec2 } from './physics/vec';
@@ -7,12 +7,13 @@ import { SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from 
 import { Renderer, type Interaction } from './render/renderer';
 import { Simulation, formatTime } from './sim/simulation';
 import { load, save } from './ui/storage';
+import { addResult, bestFor, loadResults } from './ui/results';
 import { YachtEditor } from './ui/yachtEditor';
 
 // ---------------------------------------------------------------------------
 // Zustand laden
 // ---------------------------------------------------------------------------
-const harbor = buildBoxengasse();
+let harbor: Harbor = buildScenario(load<{ id: string }>('scenario', { id: SCENARIOS[0].id }).id);
 const envSettings: EnvironmentSettings = load('env', DEFAULT_ENV);
 // Gespeichert werden nur die im Dialog einstellbaren Wurfweiten; alle Kräfte
 // kommen immer aus den aktuellen Standardwerten.
@@ -20,7 +21,9 @@ const lineSettings: LineSettings = cloneLineSettings(DEFAULT_LINE_SETTINGS);
 Object.assign(lineSettings.throwRange, load('lines', { throwRange: lineSettings.throwRange }).throwRange);
 let yachtCfg: YachtConfig = load<YachtConfig>('yacht', cloneConfig(SAILING_YACHT_36));
 if (validateConfig(yachtCfg).length || yachtCfg.schemaVersion !== 1) yachtCfg = cloneConfig(SAILING_YACHT_36);
-const savedTarget = load<{ id: string }>('target', { id: harbor.defaultTarget }).id;
+// Liegeplatz je Szenario merken
+const targetKey = (scenarioId: string) => `target.${scenarioId}`;
+const savedTarget = load<{ id: string }>(targetKey(harbor.id), { id: harbor.defaultTarget }).id;
 
 function cloneLineSettings(s: LineSettings): LineSettings {
   return { ...s, throwRange: { ...s.throwRange } };
@@ -29,6 +32,8 @@ function cloneLineSettings(s: LineSettings): LineSettings {
 const sim = new Simulation(harbor, yachtCfg, envSettings, lineSettings);
 if (harbor.berths.some((b) => b.id === savedTarget && !b.occupied)) sim.targetBerthId = savedTarget;
 sim.reset();
+
+document.getElementById('brand-sub')!.textContent = harbor.name;
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
@@ -397,10 +402,20 @@ $('btn-yacht').addEventListener('click', () => editor.open(yachtCfg));
 // Bedingungen
 const envForm = $<HTMLFormElement>('form-env');
 const targetSel = $<HTMLSelectElement>('sel-target');
-targetSel.innerHTML = harbor.berths
-  .filter((b) => !b.occupied)
-  .map((b) => `<option value="${b.id}">${b.label}</option>`)
-  .join('');
+const scenarioSel = $<HTMLSelectElement>('sel-scenario');
+scenarioSel.innerHTML = SCENARIOS.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+
+/** Liegeplatz-Auswahl für ein Szenario füllen (freie Plätze, Längsseits zuerst). */
+function fillTargets(h: Harbor, selected: string): void {
+  const free = h.berths.filter((b) => !b.occupied).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'alongside' ? -1 : 1));
+  targetSel.innerHTML = free.map((b) => `<option value="${b.id}">${b.label}</option>`).join('');
+  targetSel.value = free.some((b) => b.id === selected) ? selected : h.defaultTarget;
+}
+let dialogHarbor: Harbor = harbor;
+scenarioSel.addEventListener('change', () => {
+  dialogHarbor = scenarioSel.value === harbor.id ? harbor : buildScenario(scenarioSel.value);
+  fillTargets(dialogHarbor, load<{ id: string }>(targetKey(dialogHarbor.id), { id: dialogHarbor.defaultTarget }).id);
+});
 
 const ENV_PRESETS: Record<string, Partial<EnvironmentSettings>> = {
   calm: { windSpeedKn: 0, gustiness: 0, currentSpeedKn: 0 },
@@ -416,7 +431,6 @@ function fillEnvForm(s: EnvironmentSettings): void {
   });
   f.throwPile.value = String(lineSettings.throwRange.pile);
   f.throwBollard.value = String(lineSettings.throwRange.bollard);
-  targetSel.value = sim.targetBerthId;
 }
 
 envForm.querySelectorAll<HTMLButtonElement>('[data-env]').forEach((b) =>
@@ -445,6 +459,9 @@ function readEnvForm(): EnvironmentSettings {
 
 $('btn-env').addEventListener('click', () => {
   fillEnvForm(envSettings);
+  dialogHarbor = harbor;
+  scenarioSel.value = harbor.id;
+  fillTargets(harbor, sim.targetBerthId);
   $<HTMLDialogElement>('dlg-env').showModal();
 });
 envForm.addEventListener('submit', (ev) => {
@@ -454,10 +471,17 @@ envForm.addEventListener('submit', (ev) => {
   const f = envForm.elements as unknown as Record<string, HTMLInputElement>;
   lineSettings.throwRange.pile = clamp(Number(f.throwPile.value) || 6, 1, 15);
   lineSettings.throwRange.bollard = clamp(Number(f.throwBollard.value) || 7, 1, 15);
-  sim.targetBerthId = targetSel.value;
+  if (dialogHarbor.id !== harbor.id) {
+    harbor = dialogHarbor;
+    sim.setHarbor(harbor, targetSel.value);
+    $('brand-sub').textContent = harbor.name;
+  } else {
+    sim.targetBerthId = targetSel.value;
+  }
   save('env', envSettings);
   save('lines', { throwRange: lineSettings.throwRange });
-  save('target', { id: sim.targetBerthId });
+  save('scenario', { id: harbor.id });
+  save(targetKey(harbor.id), { id: sim.targetBerthId });
   restart();
 });
 
@@ -465,8 +489,21 @@ envForm.addEventListener('submit', (ev) => {
 // Anzeige
 // ---------------------------------------------------------------------------
 let linesSignature = '';
-let logCount = -1;
+// zuletzt angezeigter Eintrag (Anzahl allein reicht nicht: Neustart, 200er-Limit)
+let lastLogEntry: unknown = null;
 let bannerShown = false;
+let bestSignature = '';
+
+/** Bestleistung für den aktuellen Liegeplatz anzeigen. */
+function renderBest(): void {
+  const sig = `${harbor.id}|${sim.targetBerthId}`;
+  if (sig === bestSignature) return;
+  bestSignature = sig;
+  const best = bestFor(loadResults(), harbor.id, sim.targetBerthId);
+  $('best').textContent = best
+    ? `Bestleistung: ${'★'.repeat(best.stars)}${'☆'.repeat(3 - best.stars)} in ${formatTime(best.time)} (${best.contacts} Kontakte, ${new Date(best.date).toLocaleDateString('de-DE')})`
+    : 'Noch kein Ergebnis für diesen Liegeplatz.';
+}
 const MODE_LABEL: Record<LineMode, string> = { hand: 'Hand', heave: 'Holen', ease: 'Fieren', cleated: 'Belegt' };
 
 function renderLines(): void {
@@ -522,8 +559,9 @@ $('lines').addEventListener('click', (e) => {
 });
 
 function renderLog(): void {
-  if (sim.log.length === logCount) return;
-  logCount = sim.log.length;
+  const last = sim.log[sim.log.length - 1] ?? null;
+  if (last === lastLogEntry) return;
+  lastLogEntry = last;
   const el = $('log');
   el.innerHTML = sim.log
     .slice(-60)
@@ -589,10 +627,13 @@ function renderPanel(): void {
   $('st-impact').textContent = `${s.maxImpactKn.toFixed(1)} kn`;
   if (s.completed && !bannerShown) {
     bannerShown = true;
+    const newBest = s.result ? addResult(s.result) : false;
     const b = $('banner');
-    b.textContent = '⚓ ' + s.message;
+    b.textContent = '⚓ ' + s.message + (newBest ? ' · Neue Bestleistung!' : '');
     b.hidden = false;
+    bestSignature = '';
   }
+  renderBest();
   renderLines();
   renderLog();
 }

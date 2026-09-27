@@ -9,8 +9,20 @@ import { KN, closestOnSegment, dist, pointInPolygon, type Vec2 } from '../physic
 import { Yacht } from '../physics/yacht';
 import type { YachtConfig } from '../physics/yachtConfig';
 import type { Berth, Harbor } from '../harbor/harbor';
+import {
+  ROLE_LABEL,
+  STABLE_MAX_ROT_DEG_S,
+  STABLE_MAX_SOG_KN,
+  STABLE_SECONDS,
+  checkRequirements,
+  starRating,
+} from './evaluation';
 
 export const PHYSICS_DT = 1 / 240;
+/** Kontakte darunter gelten als sanftes Anlegen an die Fender [kn] */
+export const SOFT_CONTACT_KN = 0.2;
+/** Kontakte darüber gelten als hart [kn] */
+export const HARD_CONTACT_KN = 0.5;
 
 export interface ManeuverStatus {
   time: number;
@@ -21,7 +33,27 @@ export interface ManeuverStatus {
   moored: boolean;
   completed: boolean;
   completedAt: number | null;
+  /** wie lange das Boot bereits ruhig und vollständig festgemacht liegt [s] */
+  stableFor: number;
   message: string;
+  result: ManeuverResult | null;
+}
+
+/** Festgehaltenes Ergebnis eines erfolgreichen Anlegers. */
+export interface ManeuverResult {
+  scenarioId: string;
+  scenarioName: string;
+  berthId: string;
+  berthLabel: string;
+  yachtName: string;
+  time: number;
+  contacts: number;
+  hardContacts: number;
+  maxImpactKn: number;
+  stars: 1 | 2 | 3;
+  windKn: number;
+  currentKn: number;
+  date: string;
 }
 
 export interface LogEvent {
@@ -48,7 +80,6 @@ export class Simulation {
   private accumulator = 0;
   private activeContacts = new Set<string>();
   private trailTimer = 0;
-  private mooredTimer = 0;
 
   constructor(harbor: Harbor, cfg: YachtConfig, env: EnvironmentSettings = DEFAULT_ENV, lineSettings: LineSettings = DEFAULT_LINE_SETTINGS) {
     this.harbor = harbor;
@@ -76,7 +107,9 @@ export class Simulation {
       moored: false,
       completed: false,
       completedAt: null,
+      stableFor: 0,
       message: '',
+      result: null,
     };
   }
 
@@ -90,9 +123,16 @@ export class Simulation {
     this.trail = [];
     this.log = [];
     this.activeContacts.clear();
-    this.mooredTimer = 0;
     this.resetStatus();
     this.addLog('Manöver gestartet. Ziel: ' + (this.targetBerth?.label ?? '–'), 'info');
+  }
+
+  /** Anderes Szenario laden (setzt das Manöver zurück). */
+  setHarbor(harbor: Harbor, targetBerthId = harbor.defaultTarget): void {
+    this.harbor = harbor;
+    this.collisions.setObstacles(harbor.piles, harbor.solids);
+    this.targetBerthId = harbor.berths.some((b) => b.id === targetBerthId && !b.occupied) ? targetBerthId : harbor.defaultTarget;
+    this.reset();
   }
 
   get targetBerth(): Berth | undefined {
@@ -145,10 +185,11 @@ export class Simulation {
       now.add(c.obstacleId);
       if (!this.activeContacts.has(c.obstacleId)) {
         const kn = c.approachSpeed / KN;
-        this.status.contacts++;
         this.status.maxImpactKn = Math.max(this.status.maxImpactKn, kn);
+        if (kn < SOFT_CONTACT_KN) continue; // sanft an die Fender gelegt
+        this.status.contacts++;
         const what = c.kind === 'pile' ? 'Dalbe' : c.kind === 'boat' ? 'anderes Boot' : c.kind === 'wall' ? 'Kaimauer' : 'Steg';
-        if (kn > 0.5) {
+        if (kn > HARD_CONTACT_KN) {
           this.status.hardContacts++;
           this.addLog(`Harter Kontakt mit ${what} (${kn.toFixed(1)} kn)!`, 'bad');
         } else {
@@ -159,39 +200,65 @@ export class Simulation {
     this.activeContacts = now;
   }
 
-  /** Festgemacht, wenn Boot in der Zielbox, fast still, Bug- und Heckleinen belegt. */
+  /**
+   * Festgemacht, wenn das Boot in der Markierung liegt, alle geforderten
+   * Leinen belegt und stramm sind, die Maschine ausgekuppelt ist und das Boot
+   * STABLE_SECONDS lang ruhig liegt.
+   */
   private evaluate(dt: number): void {
     const berth = this.targetBerth;
     if (!berth || this.status.completed) return;
-    const hull = this.yacht.outlineWorld(true);
+    const y = this.yacht;
+    const hull = y.outlineWorld(true);
     const inside = hull.filter((p) => insideWithTolerance(p, berth.poly, 0.4)).length / hull.length;
-    // Schwerpunkt in der Box und der Rumpf weitgehend darin (Fender dürfen überstehen)
-    this.status.inBerth = inside > 0.75 && pointInPolygon(this.yacht.state.pos, berth.poly);
-    const cleated = this.lines.lines.filter((l) => l.mode === 'cleated');
-    const toPier = cleated.filter((l) => l.anchor.kind !== 'pile' && berth.pierAnchors.includes(l.anchor.id));
-    const toPiles = cleated.filter((l) => l.anchor.kind === 'pile' && berth.pileAnchors.includes(l.anchor.id));
-    const slow = this.yacht.sogKn < 0.15;
-    const engineOk = this.yacht.state.gear === 0;
-    const moored = this.status.inBerth && toPier.length >= 2 && toPiles.length >= 2 && slow && engineOk;
+    // Schwerpunkt in der Markierung und der Rumpf weitgehend darin (Fender dürfen überstehen)
+    this.status.inBerth = inside > 0.75 && pointInPolygon(y.state.pos, berth.poly);
+    const reqs = checkRequirements(berth, y, this.lines.lines);
+    const linesOk = reqs.every((r) => r.ok >= r.req.count);
+    const calm = y.sogKn < STABLE_MAX_SOG_KN && Math.abs((y.state.r * 180) / Math.PI) < STABLE_MAX_ROT_DEG_S;
+    const engineOk = y.state.gear === 0;
+    const moored = this.status.inBerth && linesOk && engineOk;
     this.status.moored = moored;
-    if (moored) {
-      this.mooredTimer += dt;
-      if (this.mooredTimer > 3) {
-        this.status.completed = true;
-        this.status.completedAt = this.time;
-        this.status.message = `Festgemacht nach ${formatTime(this.time)} – Kontakte: ${this.status.contacts}, harte: ${this.status.hardContacts}`;
-        this.addLog(this.status.message, 'good');
-      }
-    } else {
-      this.mooredTimer = 0;
-      const missing: string[] = [];
-      if (!this.status.inBerth) missing.push('Boot in Zielbox bringen');
-      if (toPier.length < 2) missing.push(`${2 - toPier.length}× Leine zum Steg belegen`);
-      if (toPiles.length < 2) missing.push(`${2 - toPiles.length}× Leine zu den Dalben belegen`);
-      if (!engineOk) missing.push('Maschine auskuppeln');
-      else if (!slow) missing.push('Boot zur Ruhe kommen lassen');
-      this.status.message = missing.join(' · ');
+    this.status.stableFor = moored && calm ? this.status.stableFor + dt : 0;
+
+    if (this.status.stableFor >= STABLE_SECONDS) {
+      const s = this.status;
+      s.completed = true;
+      s.completedAt = this.time;
+      s.result = {
+        scenarioId: this.harbor.id,
+        scenarioName: this.harbor.name,
+        berthId: berth.id,
+        berthLabel: berth.label,
+        yachtName: this.yachtConfig.name,
+        time: this.time,
+        contacts: s.contacts,
+        hardContacts: s.hardContacts,
+        maxImpactKn: s.maxImpactKn,
+        stars: starRating(s.contacts, s.hardContacts),
+        windKn: this.env.settings.windSpeedKn,
+        currentKn: this.env.settings.currentSpeedKn,
+        date: new Date().toISOString(),
+      };
+      s.message = `Festgemacht nach ${formatTime(this.time)} – ${'★'.repeat(s.result.stars)}${'☆'.repeat(3 - s.result.stars)} · Kontakte: ${s.contacts}, harte: ${s.hardContacts}`;
+      this.addLog(s.message, 'good');
+      return;
     }
+
+    const todo: string[] = [];
+    if (!this.status.inBerth) todo.push('Boot in die Markierung bringen');
+    for (const r of reqs) {
+      const missing = r.req.count - r.ok;
+      if (missing <= 0) continue;
+      if (r.slack.length) todo.push(`${ROLE_LABEL[r.req.role]} ${r.slack.map((l) => l.id).join(', ')} hängt durch – dichtholen`);
+      else if (r.notCleated) todo.push(`${r.req.label} belegen`);
+      else todo.push(`${missing > 1 ? `${missing}× ` : ''}${r.req.label} ausbringen`);
+    }
+    if (!engineOk) todo.push('Maschine auskuppeln');
+    if (moored) {
+      todo.push(calm ? `Liegt ruhig … ${Math.ceil(STABLE_SECONDS - this.status.stableFor)} s` : 'Boot zur Ruhe kommen lassen');
+    }
+    this.status.message = todo.join(' · ');
   }
 }
 
