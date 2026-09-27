@@ -72,6 +72,7 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 |---|---|
 | `↑`/`W`, `↓`/`S` | Gashebel voraus/zurück (rastet beim Durchfahren in Neutral ein) |
 | `Leertaste` | Neutral |
+| `Shift`+`↑` / `Shift`+`↓` | Eingekuppelt im Standgas voraus / zurück (auch als Knöpfe am Gashebel) |
 | `←`/`A`, `→`/`D` | Steuerrad nach Bb/Stb (bleibt stehen wie ein echtes Rad) |
 | `C` | Ruder mittschiffs |
 | `Q`/`E` | Bugstrahlruder (falls konfiguriert) |

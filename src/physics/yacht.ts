@@ -65,7 +65,10 @@ export interface ForceBreakdown {
   waterSpeed: Vec2; // Body, Fahrt durchs Wasser [m/s]
 }
 
-const NEUTRAL_ZONE = 0.1;
+/** Hebelbereich um 0, in dem das Getriebe in Neutral steht */
+export const NEUTRAL_ZONE = 0.1;
+/** Hebelstellung „eingekuppelt, Standgas“ (knapp hinter der Neutral-Rastung) */
+export const IDLE_LEVER = NEUTRAL_ZONE + 0.01;
 /**
  * Empirische Modellbeiwerte an einer Stelle, damit sie gegen Messungen
  * (Drehkreis, Aufstoppweg, Driftgeschwindigkeit) kalibriert werden können.

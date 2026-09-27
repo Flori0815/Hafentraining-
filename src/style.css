@@ -147,6 +147,18 @@ button.primary {
 .throttle output {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.throttle-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.throttle-quick button {
+  font-size: 12px;
+  padding: 3px 4px;
 }
 .wheel {
   width: 250px;
