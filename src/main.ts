@@ -78,8 +78,10 @@ $('btn-idle-back').addEventListener('click', () => setThrottle(-IDLE_LEVER));
 
 function bindThruster(id: string, dir: number): void {
   const b = $(id);
-  const on = (e: Event) => {
+  const on = (e: PointerEvent) => {
     e.preventDefault();
+    // Finger darf beim Halten leicht verrutschen, ohne dass der Schub abbricht
+    b.setPointerCapture(e.pointerId);
     sim.yacht.controls.thruster = dir;
     b.classList.add('active');
   };
@@ -89,7 +91,10 @@ function bindThruster(id: string, dir: number): void {
   };
   b.addEventListener('pointerdown', on);
   b.addEventListener('pointerup', off);
-  b.addEventListener('pointerleave', off);
+  b.addEventListener('pointercancel', off);
+  b.addEventListener('lostpointercapture', off);
+  // Langes Drücken öffnet auf Mobilgeräten sonst Kontextmenü/Textauswahl
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 bindThruster('btn-bt-p', -1);
 bindThruster('btn-bt-s', 1);

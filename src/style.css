@@ -119,6 +119,21 @@ button.primary {
   align-items: flex-end;
   pointer-events: none;
 }
+/* Bedienelemente: kein Markieren/Kontextmenü bei langem Druck auf Touch-Geräten */
+.helm-controls,
+.topbar,
+.line-card .btns {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.helm-controls button {
+  touch-action: manipulation;
+}
+.thruster button {
+  touch-action: none;
+}
 .helm-controls > * {
   pointer-events: auto;
   background: rgba(10, 22, 32, 0.8);
