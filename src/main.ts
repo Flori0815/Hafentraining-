@@ -14,7 +14,10 @@ import { YachtEditor } from './ui/yachtEditor';
 // ---------------------------------------------------------------------------
 const harbor = buildBoxengasse();
 const envSettings: EnvironmentSettings = load('env', DEFAULT_ENV);
-const lineSettings: LineSettings = load('lines', cloneLineSettings(DEFAULT_LINE_SETTINGS));
+// Gespeichert werden nur die im Dialog einstellbaren Wurfweiten; alle Kräfte
+// kommen immer aus den aktuellen Standardwerten.
+const lineSettings: LineSettings = cloneLineSettings(DEFAULT_LINE_SETTINGS);
+Object.assign(lineSettings.throwRange, load('lines', { throwRange: lineSettings.throwRange }).throwRange);
 let yachtCfg: YachtConfig = load<YachtConfig>('yacht', cloneConfig(SAILING_YACHT_36));
 if (validateConfig(yachtCfg).length || yachtCfg.schemaVersion !== 1) yachtCfg = cloneConfig(SAILING_YACHT_36);
 const savedTarget = load<{ id: string }>('target', { id: harbor.defaultTarget }).id;
@@ -448,7 +451,7 @@ envForm.addEventListener('submit', (ev) => {
   lineSettings.throwRange.bollard = clamp(Number(f.throwBollard.value) || 7, 1, 15);
   sim.targetBerthId = targetSel.value;
   save('env', envSettings);
-  save('lines', lineSettings);
+  save('lines', { throwRange: lineSettings.throwRange });
   save('target', { id: sim.targetBerthId });
   restart();
 });

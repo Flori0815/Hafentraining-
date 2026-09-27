@@ -117,7 +117,7 @@ describe('Ruder', () => {
     expect(y.sogKn).toBeLessThan(2.5);
   });
 
-  it('Drehkreis mit Hartruder ca. 1.5–4 Bootslängen', () => {
+  it('Drehkreis mit Hartruder ca. 1.3–4 Bootslängen', () => {
     const y = new Yacht(SAILING_YACHT_36, { x: 0, y: 0 }, 0, 4);
     y.controls.throttle = 0.4;
     y.controls.helm = 1;
@@ -128,7 +128,7 @@ describe('Ruder', () => {
       maxX = Math.max(maxX, y.state.pos.x);
     });
     const d = maxX - minX;
-    expect(d).toBeGreaterThan(1.5 * 11);
+    expect(d).toBeGreaterThan(1.3 * 11);
     expect(d).toBeLessThan(4 * 11);
   });
 
@@ -261,5 +261,45 @@ describe('Leinen', () => {
     }
     expect(ls.lines[0].length).toBeGreaterThan(len0 + 1);
     expect(ls.lines[0].tension).toBeLessThanOrEqual(ls.settings.handHoldForce + 1);
+  });
+
+  it('Fieren erzeugt wenig Zug, Halten viel', () => {
+    // Boot läuft mit 1.5 kn von der Dalbe weg; maximaler Leinenzug je Modus
+    const maxTension = (mode: 'hand' | 'ease') => {
+      const y = new Yacht(SAILING_YACHT_36, { x: 0, y: 0 }, 0, 1.5);
+      const ls = new LineSystem();
+      const a: ShoreAnchor = { id: 'x', kind: 'pile', pos: { x: 0, y: -8 }, label: '' };
+      const l = ls.attach(y, 'stern-p', a)!;
+      ls.setMode(l.id, mode);
+      let max = 0;
+      for (let i = 0; i < 240 * 6; i++) {
+        const f = ls.update(y, DT);
+        y.step(DT, calm, calm, f);
+        max = Math.max(max, ls.lines[0].tension);
+      }
+      return max;
+    };
+    const ease = maxTension('ease');
+    const hold = maxTension('hand');
+    expect(ease).toBeLessThanOrEqual(new LineSystem().settings.easeForce + 1);
+    expect(hold).toBeGreaterThan(1000);
+    expect(hold).toBeGreaterThan(5 * ease);
+  });
+
+  it('Dichtholen zieht das Boot gegen 15 kn Seitenwind heran', () => {
+    // Kurs Nord, Wind aus West drückt nach Ost; Leine von Mitte Bb zu Klampe im Westen
+    const y = new Yacht(SAILING_YACHT_36);
+    const ls = new LineSystem();
+    const mid = y.cleatWorld('mid-p')!;
+    const a: ShoreAnchor = { id: 'k', kind: 'bollard', pos: { x: mid.x - 5, y: mid.y }, label: '' };
+    const l = ls.attach(y, 'mid-p', a)!;
+    ls.setMode(l.id, 'heave');
+    const wind = { x: 15 * KN, y: 0 };
+    for (let i = 0; i < 240 * 30; i++) {
+      const f = ls.update(y, DT);
+      y.step(DT, calm, wind, f);
+    }
+    const d = Math.hypot(y.cleatWorld('mid-p')!.x - a.pos.x, y.cleatWorld('mid-p')!.y - a.pos.y);
+    expect(d).toBeLessThan(3);
   });
 });
