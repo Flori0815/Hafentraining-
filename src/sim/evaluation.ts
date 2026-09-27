@@ -1,0 +1,87 @@
+/**
+ * Bewertung des Festmachens: Welche Aufgabe hat eine Leine (Vorleine,
+ * Spring, …), sind die geforderten Leinen belegt und stramm, und wie gut
+ * war das Manöver.
+ */
+import type { Berth, LineRequirement, LineRole } from '../harbor/harbor';
+import type { MooringLine } from '../physics/lines';
+import { worldToBody } from '../physics/vec';
+import type { Yacht } from '../physics/yacht';
+
+/** Leine gilt als stramm, wenn sie höchstens so viel Lose hat [m]. */
+export const TAUT_MAX_SLACK = 0.2;
+/** So lange muss das Boot ruhig festgemacht liegen [s]. */
+export const STABLE_SECONDS = 5;
+/** Grenzwerte für „ruhig“ */
+export const STABLE_MAX_SOG_KN = 0.2;
+export const STABLE_MAX_ROT_DEG_S = 1;
+
+export const ROLE_LABEL: Record<LineRole, string> = {
+  pier: 'Stegleine',
+  pile: 'Dalbenleine',
+  bowLine: 'Vorleine',
+  sternLine: 'Achterleine',
+  fwdSpring: 'Vorspring',
+  aftSpring: 'Achterspring',
+};
+
+/**
+ * Aufgabe einer Leine. In Boxen zählt nur der Festpunkt (Steg oder Dalbe).
+ * Längsseits aus der Geometrie: Klampe vorn/achtern und ob der Festpunkt
+ * vor oder hinter der Klampe liegt.
+ */
+export function classifyLine(berthKind: Berth['kind'], yacht: Yacht, line: MooringLine): LineRole {
+  if (berthKind === 'box') return line.anchor.kind === 'pile' ? 'pile' : 'pier';
+  const cleat = yacht.model.cleats.find((c) => c.id === line.cleatId);
+  if (!cleat) return 'pier';
+  const st = yacht.state;
+  const a = worldToBody({ x: line.anchor.pos.x - st.pos.x, y: line.anchor.pos.y - st.pos.y }, st.psi);
+  const third = yacht.model.cfg.hull.loa / 6;
+  const fore = cleat.pos.x > third;
+  const aft = cleat.pos.x < -third;
+  const ahead = a.x > cleat.pos.x;
+  if (ahead) return fore ? 'bowLine' : 'aftSpring';
+  return aft ? 'sternLine' : 'fwdSpring';
+}
+
+export const isTaut = (l: MooringLine): boolean => l.slack <= TAUT_MAX_SLACK;
+
+export interface RequirementState {
+  req: LineRequirement;
+  /** belegt und stramm */
+  ok: number;
+  /** belegt, hängt aber durch */
+  slack: MooringLine[];
+  /** passende Leine, aber noch nicht belegt */
+  notCleated: number;
+}
+
+export function checkRequirements(berth: Berth, yacht: Yacht, lines: MooringLine[]): RequirementState[] {
+  const used = new Set<number>();
+  return berth.requirements.map((req) => {
+    const state: RequirementState = { req, ok: 0, slack: [], notCleated: 0 };
+    for (const l of lines) {
+      if (used.has(l.id) || !req.anchors.includes(l.anchor.id)) continue;
+      if (classifyLine(berth.kind, yacht, l) !== req.role) continue;
+      if (l.mode !== 'cleated') {
+        state.notCleated++;
+        continue;
+      }
+      if (isTaut(l)) {
+        if (state.ok < req.count) {
+          state.ok++;
+          used.add(l.id);
+        }
+      } else {
+        state.slack.push(l);
+      }
+    }
+    return state;
+  });
+}
+
+/** Sterne: 3 ohne jeden Kontakt, 2 nur leichte Berührungen, 1 mit hartem Kontakt. */
+export function starRating(contacts: number, hardContacts: number): 1 | 2 | 3 {
+  if (hardContacts > 0) return 1;
+  return contacts > 0 ? 2 : 3;
+}

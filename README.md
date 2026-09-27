@@ -1,8 +1,9 @@
 # ⚓ Hafentraining – Hafenmanöver-Simulator
 
-Browser-Simulator für Hafenmanöver mit Yachten in der 2D-Draufsicht. MVP: eine
-**36-Fuß-Segelyacht** unter Maschine in einer **Boxengasse mit Dalben**. Die
-Yacht ist vollständig konfigurierbar, damit später jeder sein eigenes Boot
+Browser-Simulator für Hafenmanöver mit Yachten in der 2D-Draufsicht: eine
+**36-Fuß-Segelyacht** unter Maschine, wahlweise in einer **Boxengasse mit
+Dalben** oder **längsseits in der Gasse** (Steg mit Lücken zwischen Yachten).
+Die Yacht ist vollständig konfigurierbar, damit jeder sein eigenes Boot
 abbilden kann.
 
 Läuft komplett statisch im Browser (Vite + TypeScript, Canvas 2D, keine
@@ -84,8 +85,23 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 Maus/Touch: Ziehen verschiebt die Karte, Mausrad/Pinch zoomt. Gashebel und
 Ruder gibt es auch als Schieberegler (mobil bedienbar).
 
-**Aufgabe:** Grün markierte Box ansteuern, je zwei Leinen an Dalben und
-Stegklampen belegen, Maschine auskuppeln, Boot zur Ruhe kommen lassen.
+**Szenarien** (Dialog „Bedingungen“):
+
+| Szenario | Liegeplätze | nötige Leinen |
+|---|---|---|
+| Boxengasse mit Dalben | freie Boxen 4,2 m × 13,5 m | je 2 zum Steg und zu den Dalben |
+| Längsseits in der Gasse | Lücke A 18 m (leicht), Lücke B 14 m (schwer), freie Boxen gegenüber | Vorleine, Achterleine, Vorspring, Achterspring |
+
+Längsseits wird die Aufgabe jeder Leine aus der Geometrie erkannt: Klampe im
+Vor-/Achterschiff und ob der Poller vor oder hinter der Klampe liegt.
+
+**Erfolg:** Das Boot liegt in der grünen Markierung, alle geforderten Leinen
+sind **belegt und stramm** (höchstens 0,2 m Lose), die Maschine ist
+ausgekuppelt, und das Boot liegt **5 s ruhig** (unter 0,2 kn und 1°/s).
+Wertung: ★★★ ohne Kontakt, ★★ mit leichter Berührung, ★ mit hartem Kontakt
+(über 0,5 kn); sanftes Anlegen an die Fender (unter 0,2 kn) zählt nicht. Jedes
+Ergebnis wird im Browser gespeichert, die Bestleistung je Liegeplatz steht im
+Panel.
 
 ## Architektur
 
@@ -99,10 +115,11 @@ src/
     environment.ts    Wind mit Böen, Strömung
     lines.ts          Festmacherleinen und Crew-Aktionen
     collision.ts      Kontaktmodell
-  harbor/harbor.ts  Hafen als Daten (Stege, Dalben, Festpunkte, Boxen, Boote)
-  sim/simulation.ts Fester Zeitschritt, Bewertung, Logbuch
+  harbor/harbor.ts  Häfen als Daten, aus Bausteinen (Boxenreihe, Längsseits-Steg); SCENARIOS
+  sim/simulation.ts Fester Zeitschritt, Kontakte, Ergebnis, Logbuch
+  sim/evaluation.ts Leinen-Rollen, Anforderungen je Liegeplatz, Sterne
   render/renderer.ts Canvas-Draufsicht
-  ui/               Yacht-Editor, Persistenz (localStorage)
+  ui/               Yacht-Editor, Ergebnisse/Bestleistungen, Persistenz (localStorage)
   main.ts           Eingabe, Panels, Dialoge
 ```
 
@@ -113,7 +130,7 @@ mit einer Zeile ergänzt.
 
 ## Roadmap
 
-- Weitere Häfen/Manöver (Längsseits, Mooring/Heckanker, Schwimmsteg, Tidenstrom) + Hafen-Editor
+- Weitere Häfen/Manöver (Mooring/Heckanker, Schwimmsteg, Tidenstrom) + Hafen-Editor
 - Crew-Positionen (wer steht wo, Übersteigen), Leinen über Slip, Umlenken an der Winsch
 - Windabdeckung durch Boote/Gebäude, räumlich variable Strömung, Bank-Effekt
 - Fender als eigene Objekte, Schadensmodell

@@ -10,7 +10,7 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">⚓ Hafentraining <span class="sub">Boxengasse</span></div>
+      <div class="brand">⚓ Hafentraining <span class="sub" id="brand-sub"></span></div>
       <nav class="actions">
         <button id="btn-reset" title="Neustart (R)">↺ Neustart</button>
         <button id="btn-pause" title="Pause (P)">⏸ Pause</button>
@@ -58,6 +58,7 @@
         <h2>Aufgabe</h2>
         <p id="task-target" class="target"></p>
         <p id="task-msg" class="task-msg"></p>
+        <p id="best" class="best"></p>
         <div class="kv small">
           <span>Zeit</span><b id="st-time">0:00</b>
           <span>Kontakte</span><b id="st-contacts">0</b>
@@ -120,7 +121,8 @@
               <li><kbd>V</kbd> Kamera folgt · <kbd>K</kbd> Kräfte · <kbd>P</kbd> Pause · <kbd>T</kbd> Zeitraffer · <kbd>R</kbd> Neustart</li>
             </ul>
             <h3>Ziel</h3>
-            <p>Die grün markierte Box ansteuern, mit zwei Leinen an den Dalben und zwei Leinen an den Stegklampen festmachen (belegen), Maschine in Neutral. Bug oder Heck zum Steg ist beides erlaubt.</p>
+            <p>Den grün markierten Liegeplatz ansteuern und festmachen. <b>Box:</b> je zwei Leinen an Dalben und Stegklampen. <b>Längsseits:</b> Vorleine, Achterleine, Vorspring und Achterspring. Alle Leinen belegt und stramm (dichtholen!), Maschine in Neutral, Boot 5 s ruhig in der Markierung. Szenario und Liegeplatz unter „Bedingungen“.</p>
+            <p>Wertung: ★★★ ohne Kontakt, ★★ mit leichter Berührung, ★ mit hartem Kontakt (über 0,5 kn). Die Bestleistung je Liegeplatz wird im Browser gespeichert.</p>
             <h3>Physik</h3>
             <p>Verdrängung und Zusatzmasse, Kielform und Lateralplan, Radeffekt, Schraubenstrahl aufs Ruder, Wind mit Böen (Bug fällt ab), Strömung, Leinenelastizität. Gasgeben gegen eine belegte Leine = Eindampfen.</p>
           </div>
@@ -139,7 +141,8 @@
           <label>Winddreher ± [°]<input name="windShiftDeg" type="number" min="0" max="45" step="1" /></label>
           <label>Strömung [kn]<input name="currentSpeedKn" type="number" min="0" max="4" step="0.1" /></label>
           <label>Strömung nach [°]<input name="currentTowardDeg" type="number" min="0" max="359" step="5" /></label>
-          <label>Zielbox<select name="target" id="sel-target"></select></label>
+          <label>Szenario<select name="scenario" id="sel-scenario"></select></label>
+          <label>Liegeplatz<select name="target" id="sel-target"></select></label>
           <label>Wurfweite Dalbe [m]<input name="throwPile" type="number" min="1" max="15" step="0.5" /></label>
           <label>Wurfweite Stegklampe [m]<input name="throwBollard" type="number" min="1" max="15" step="0.5" /></label>
         </div>

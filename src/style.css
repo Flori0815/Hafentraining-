@@ -253,6 +253,11 @@ button.primary {
   font-weight: 600;
   color: var(--accent);
 }
+.best {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--accent-2);
+}
 .task-msg {
   margin: 0 0 8px;
   font-size: 13px;
