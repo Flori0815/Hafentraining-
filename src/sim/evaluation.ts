@@ -80,6 +80,27 @@ export function checkRequirements(berth: Berth, yacht: Yacht, lines: MooringLine
   });
 }
 
+/**
+ * Wertung eines Kontakts nach Art und Annäherungsgeschwindigkeit [kn]:
+ *  - über einen Fender: bis 0,6 kn ohne Abzug, über 1,2 kn hart
+ *  - Rumpf an Dalbe: bis 0,3 kn ohne Abzug (Dalben sind zum Anlehnen da)
+ *  - Rumpf an Steg, Mauer, anderem Boot: schon ab 0,1 kn Berührung
+ *  - Rumpf über 0,5 kn: hart
+ */
+export const CONTACT_LIMITS = {
+  fender: { free: 0.6, hard: 1.2 },
+  pile: { free: 0.3, hard: 0.5 },
+  hull: { free: 0.1, hard: 0.5 },
+};
+
+export type ContactRating = 'free' | 'light' | 'hard';
+
+export function rateContact(via: 'hull' | 'fender', kind: string, approachKn: number): ContactRating {
+  const lim = via === 'fender' ? CONTACT_LIMITS.fender : kind === 'pile' ? CONTACT_LIMITS.pile : CONTACT_LIMITS.hull;
+  if (approachKn < lim.free) return 'free';
+  return approachKn > lim.hard ? 'hard' : 'light';
+}
+
 /** Sterne: 3 ohne jeden Kontakt, 2 nur leichte Berührungen, 1 mit hartem Kontakt. */
 export function starRating(contacts: number, hardContacts: number): 1 | 2 | 3 {
   if (hardContacts > 0) return 1;

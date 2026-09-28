@@ -81,6 +81,8 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 | `1`–`9` | Leine wählen |
 | `G` / `H` / `F` / `B` / `L` | Halten / Dichtholen / Fieren / Belegen / Loswerfen |
 | `V` `K` `P` `T` `R` | Kamera folgen, Kräfte anzeigen, Pause, Zeitraffer, Neustart |
+| `U` / `I` | Fender Bb / Stb raus bzw. einholen |
+| `O` | Ballfender setzen: danach Stelle am Rumpf anklicken |
 
 Maus/Touch: Ziehen verschiebt die Karte, Mausrad/Pinch zoomt. Gashebel und
 Ruder gibt es auch als Schieberegler (mobil bedienbar).
@@ -98,8 +100,19 @@ Vor-/Achterschiff und ob der Poller vor oder hinter der Klampe liegt.
 **Erfolg:** Das Boot liegt in der grünen Markierung, alle geforderten Leinen
 sind **belegt und stramm** (höchstens 0,2 m Lose), die Maschine ist
 ausgekuppelt, und das Boot liegt **5 s ruhig** (unter 0,2 kn und 1°/s).
-Wertung: ★★★ ohne Kontakt, ★★ mit leichter Berührung, ★ mit hartem Kontakt
-(über 0,5 kn); sanftes Anlegen an die Fender (unter 0,2 kn) zählt nicht. Jedes
+Wertung: ★★★ ohne Kontakt, ★★ mit leichter Berührung, ★ mit hartem Kontakt.
+
+| Kontakt | ohne Abzug | leichte Berührung | hart |
+|---|---|---|---|
+| über einen Fender | bis 0,6 kn | 0,6–1,2 kn | über 1,2 kn |
+| Rumpf an Dalbe | bis 0,3 kn | 0,3–0,5 kn | über 0,5 kn |
+| Rumpf an Steg, Mauer, Boot | bis 0,1 kn | 0,1–0,5 kn | über 0,5 kn |
+
+**Fender:** Standardsatz 4 je Seite (Zylinderfender Ø 22 cm), anfangs
+verstaut; die Crew bringt sie auf Knopfdruck aus (~1 s pro Fender). Dazu ein
+Ballfender (Ø 60 cm, weicher), der an jede Stelle am Rumpf gebracht werden
+kann (~4 s). Fender sind eigene Kontaktkörper: Sie federn und halten den Rumpf
+auf Abstand. Jedes
 Ergebnis wird im Browser gespeichert, die Bestleistung je Liegeplatz steht im
 Panel.
 
@@ -133,6 +146,6 @@ mit einer Zeile ergänzt.
 - Weitere Häfen/Manöver (Mooring/Heckanker, Schwimmsteg, Tidenstrom) + Hafen-Editor
 - Crew-Positionen (wer steht wo, Übersteigen), Leinen über Slip, Umlenken an der Winsch
 - Windabdeckung durch Boote/Gebäude, räumlich variable Strömung, Bank-Effekt
-- Fender als eigene Objekte, Schadensmodell
+- Schadensmodell
 - Manöver-Replay und Aufgabenkatalog mit Bewertung
 - Motorboote (Zwei-Maschinen, Joystick), Katamarane
