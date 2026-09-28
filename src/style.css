@@ -312,6 +312,19 @@ button.primary {
 .hint.active {
   color: var(--accent-2);
 }
+.fender-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.fender-btns button {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+.fender-btns button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .line-card {
   background: var(--panel-2);
   border: 1px solid var(--line);

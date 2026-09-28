@@ -21,6 +21,10 @@ export interface Interaction {
   selectedLine: number | null;
   showForces: boolean;
   flash: { text: string; until: number; pos: Vec2 } | null;
+  /** Ballfender-Modus: nächster Klick auf den Rumpf setzt den Ballfender */
+  placingBall: boolean;
+  /** Vorschau der Ballfender-Position (Weltkoordinaten) */
+  ballPreview: Vec2 | null;
 }
 
 interface Particle {
@@ -136,6 +140,7 @@ export class Renderer {
     this.drawTrail(sim.trail);
     this.drawWash(sim, realDt);
     this.drawYacht(sim, ia);
+    this.drawFenders(sim, ia);
     this.drawLines(sim, ia);
     this.drawAnchors(sim, ia);
     this.drawContacts(sim);
@@ -429,6 +434,38 @@ export class Renderer {
     const r = Math.round(120 + 135 * t);
     const g = Math.round(230 - 170 * t);
     return `rgb(${r},${g},80)`;
+  }
+
+  /** Fender: hängend voll, während die Crew sie ausbringt halbtransparent. */
+  private drawFenders(sim: Simulation, ia: Interaction): void {
+    const ctx = this.ctx;
+    const y = sim.yacht;
+    const touching = new Set(sim.collisions.contacts.filter((c) => c.via === 'fender').map((c) => c.fenderId));
+    for (const f of sim.fenders.all()) {
+      if (!f.out) continue;
+      const s = this.toScreen(y.toWorld(f.pos));
+      const r = Math.max(f.kind === 'ball' ? 4 : 2.5, f.r * this.camera.scale);
+      const ready = sim.time >= f.readyAt;
+      ctx.globalAlpha = ready ? 1 : 0.35;
+      ctx.fillStyle = f.kind === 'ball' ? '#f97316' : '#2f6fdb';
+      ctx.strokeStyle = touching.has(f.id) ? '#fde047' : 'rgba(10,20,30,0.8)';
+      ctx.lineWidth = touching.has(f.id) ? 2.5 : 1;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (ia.placingBall && ia.ballPreview) {
+      const s = this.toScreen(ia.ballPreview);
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, Math.max(4, 0.3 * this.camera.scale), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   private drawLines(sim: Simulation, ia: Interaction): void {

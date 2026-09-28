@@ -5,6 +5,7 @@
  */
 import { closestOnSegment, dot, pointInPolygon, sub, type Vec2 } from './vec';
 import type { ExternalForce, Yacht } from './yacht';
+import type { FenderCollider } from './fenders';
 
 export interface CircleObstacle {
   id: string;
@@ -27,6 +28,9 @@ export interface Contact {
   /** Annäherungsgeschwindigkeit bei Kontakt [m/s] (>0 = aufeinander zu) */
   approachSpeed: number;
   force: number;
+  /** über welchen Körper der Kontakt läuft: Rumpf oder ein Fender */
+  via: 'hull' | 'fender';
+  fenderId?: string;
 }
 
 const STIFFNESS = 1.5e5; // N/m
@@ -75,22 +79,32 @@ export class CollisionSystem {
     this.polyBoxes = polygons.map((p) => bbox(p.poly));
   }
 
-  update(yacht: Yacht): ExternalForce[] {
+  update(yacht: Yacht, fenders: FenderCollider[] = []): ExternalForce[] {
     const hull = yacht.outlineWorld(true);
     const hb = bbox(hull);
     const center = yacht.state.pos;
     const forces: ExternalForce[] = [];
     this.contacts = [];
     const m = yacht.model.mass;
-    const damping = 2 * 0.6 * Math.sqrt(STIFFNESS * m * 0.3);
+    const dampingFor = (k: number) => 2 * 0.6 * Math.sqrt(k * m * 0.3);
+    const hullDamping = dampingFor(STIFFNESS);
 
-    const addContact = (id: string, kind: Contact['kind'], point: Vec2, normal: Vec2, depth: number) => {
+    const addContact = (
+      id: string,
+      kind: Contact['kind'],
+      point: Vec2,
+      normal: Vec2,
+      depth: number,
+      k = STIFFNESS,
+      damping = hullDamping,
+      fender?: FenderCollider,
+    ) => {
       const vel = yacht.pointVelocity({
         // Punkt relativ zum Schwerpunkt im Body-System
         ...worldToBodyRel(point, center, yacht.state.psi),
       });
       const vn = dot(vel, normal); // > 0 = Boot entfernt sich
-      const fn = Math.max(0, STIFFNESS * depth - damping * vn);
+      const fn = Math.max(0, k * depth - damping * vn);
       const vt = { x: vel.x - normal.x * vn, y: vel.y - normal.y * vn };
       const vtl = Math.hypot(vt.x, vt.y);
       const ff = vtl > 1e-6 ? (FRICTION * fn * Math.tanh(vtl / 0.05)) / vtl : 0;
@@ -98,8 +112,45 @@ export class CollisionSystem {
         point,
         force: { x: normal.x * fn - vt.x * ff, y: normal.y * fn - vt.y * ff },
       });
-      this.contacts.push({ obstacleId: id, kind, point, normal, depth, approachSpeed: Math.max(0, -vn), force: fn });
+      this.contacts.push({
+        obstacleId: id,
+        kind,
+        point,
+        normal,
+        depth,
+        approachSpeed: Math.max(0, -vn),
+        force: fn,
+        via: fender ? 'fender' : 'hull',
+        fenderId: fender?.id,
+      });
     };
+
+    // Fender: Kreis um den Fendermittelpunkt gegen Dalben und Polygone
+    for (const f of fenders) {
+      const c = yacht.toWorld(f.pos);
+      const damping = dampingFor(f.k);
+      for (const pile of this.circles) {
+        const dx = c.x - pile.pos.x;
+        const dy = c.y - pile.pos.y;
+        const d = Math.hypot(dx, dy);
+        const reach = f.r + pile.radius;
+        if (d >= reach || d < 1e-9) continue;
+        const n = { x: dx / d, y: dy / d };
+        addContact(pile.id, 'pile', { x: pile.pos.x + n.x * pile.radius, y: pile.pos.y + n.y * pile.radius }, n, reach - d, f.k, damping, f);
+      }
+      for (let i = 0; i < this.polygons.length; i++) {
+        const b = this.polyBoxes[i];
+        if (c.x < b.minX - f.r || c.x > b.maxX + f.r || c.y < b.minY - f.r || c.y > b.maxY + f.r) continue;
+        const ob = this.polygons[i];
+        const inside = pointInPolygon(c, ob.poly);
+        const cp = closestOnPolygon(c, ob.poly);
+        if (!inside && cp.dist >= f.r) continue;
+        let n = inside ? sub(cp.point, c) : sub(c, cp.point);
+        const l = Math.hypot(n.x, n.y) || 1;
+        n = { x: n.x / l, y: n.y / l };
+        addContact(ob.id, ob.kind, cp.point, n, inside ? f.r + cp.dist : f.r - cp.dist, f.k, damping, f);
+      }
+    }
 
     // Dalben
     for (const c of this.circles) {

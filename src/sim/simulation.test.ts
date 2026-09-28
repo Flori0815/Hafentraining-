@@ -4,7 +4,7 @@ import { DEFAULT_ENV } from '../physics/environment';
 import { KN } from '../physics/vec';
 import { SAILING_YACHT_36 } from '../physics/yachtConfig';
 import { pointInPolygon } from '../physics/vec';
-import { classifyLine, starRating } from './evaluation';
+import { classifyLine, rateContact, starRating } from './evaluation';
 import { Simulation } from './simulation';
 
 const CALM = { ...DEFAULT_ENV, windSpeedKn: 0, gustiness: 0, currentSpeedKn: 0 };
@@ -211,5 +211,95 @@ describe('Bewertung', () => {
     expect(sim.collisions.polygons.length).toBe(sim.harbor.solids.length);
     sim.setHarbor(buildBoxengasse(), 'gap-b');
     expect(sim.targetBerthId).toBe('box-n10');
+  });
+});
+
+describe('Fender und Kontaktwertung', () => {
+  it('Wertungsregeln: Fender bis 0,6 kn frei, Dalbe bis 0,3 kn, Rumpf an Steg ab 0,1 kn', () => {
+    expect(rateContact('fender', 'pier', 0.5)).toBe('free');
+    expect(rateContact('fender', 'pier', 0.9)).toBe('light');
+    expect(rateContact('fender', 'boat', 1.5)).toBe('hard');
+    expect(rateContact('hull', 'pile', 0.25)).toBe('free');
+    expect(rateContact('hull', 'pile', 0.4)).toBe('light');
+    expect(rateContact('hull', 'pier', 0.15)).toBe('light');
+    expect(rateContact('hull', 'boat', 0.6)).toBe('hard');
+  });
+
+  /** Längsseits: Boot treibt mit 0.5 kn seitlich (nach Bb) an den Steg. */
+  function driftOntoPier(fendersOut: boolean) {
+    const sim = new Simulation(buildLaengsseits(), SAILING_YACHT_36, CALM);
+    sim.reset();
+    place(sim, 29, -2.3, 90); // Kurs Ost, Steg an Bb, Rumpf ca. 0.5 m vom Steg
+    if (fendersOut) {
+      sim.fenders.setSide('p', true, 0);
+      sim.time = 5; // Crew hat die Fender schon ausgebracht
+    }
+    sim.yacht.state.v = -0.5 * KN; // nach Bb
+    let hullTouched = false;
+    let fenderTouched = false;
+    for (let i = 0; i < 240 * 6; i++) {
+      sim.stepOnce();
+      if (sim.collisions.contacts.some((c) => c.via === 'hull')) hullTouched = true;
+      if (sim.collisions.contacts.some((c) => c.via === 'fender')) fenderTouched = true;
+    }
+    return { sim, hullTouched, fenderTouched };
+  }
+
+  it('mit Fendern: Boot liegt am Fender, Rumpf berührt den Steg nicht, kein Abzug', () => {
+    const { sim, hullTouched, fenderTouched } = driftOntoPier(true);
+    expect(fenderTouched).toBe(true);
+    expect(hullTouched).toBe(false);
+    expect(sim.status.contacts).toBe(0);
+    expect(sim.log.some((l) => l.text.startsWith('Fender an Steg'))).toBe(true);
+  });
+
+  it('ohne Fender: derselbe Drift ist eine Berührung', () => {
+    const { sim, hullTouched } = driftOntoPier(false);
+    expect(hullTouched).toBe(true);
+    expect(sim.status.contacts).toBe(1);
+    expect(sim.status.hardContacts).toBe(0);
+  });
+
+  it('langsamer Kontakt mit einer Dalbe kostet nichts, schneller schon', () => {
+    const run = (vKn: number) => {
+      const sim = new Simulation(buildBoxengasse(), SAILING_YACHT_36, CALM);
+      sim.reset();
+      place(sim, 21, -15.95, 90);
+      sim.yacht.state.v = -vKn * KN; // nach Norden auf Dalbe N5
+      runFor(sim, 5);
+      return sim;
+    };
+    const slow = run(0.25);
+    expect(slow.status.maxImpactKn).toBeGreaterThan(0.05);
+    expect(slow.status.contacts).toBe(0);
+    expect(slow.log.some((l) => l.text.includes('Dalbe sanft berührt'))).toBe(true);
+    const fast = run(1.2);
+    expect(fast.status.contacts).toBeGreaterThan(0);
+  });
+
+  it('Ballfender am Bug fängt eine langsame Bugberührung am Steg ab', () => {
+    const run = (ball: boolean) => {
+      const sim = new Simulation(buildBoxengasse(), SAILING_YACHT_36, CALM);
+      sim.reset();
+      place(sim, 39.9, -7.2, 0, 0.5);
+      if (ball) {
+        const m = sim.yacht.model;
+        const bow = m.outline.reduce((a, b) => (b.x > a.x ? b : a));
+        expect(sim.fenders.placeBall(m, bow, 0)).toBe(true);
+        sim.time = 5;
+      }
+      let hull = false;
+      for (let i = 0; i < 240 * 6; i++) {
+        sim.stepOnce();
+        if (sim.collisions.contacts.some((c) => c.via === 'hull')) hull = true;
+      }
+      return { sim, hull };
+    };
+    const without = run(false);
+    expect(without.hull).toBe(true);
+    expect(without.sim.status.contacts).toBeGreaterThan(0);
+    const withBall = run(true);
+    expect(withBall.hull).toBe(false);
+    expect(withBall.sim.status.contacts).toBe(0);
   });
 });

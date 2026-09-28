@@ -15,14 +15,12 @@ import {
   STABLE_MAX_SOG_KN,
   STABLE_SECONDS,
   checkRequirements,
+  rateContact,
   starRating,
 } from './evaluation';
+import { FenderSet } from '../physics/fenders';
 
 export const PHYSICS_DT = 1 / 240;
-/** Kontakte darunter gelten als sanftes Anlegen an die Fender [kn] */
-export const SOFT_CONTACT_KN = 0.2;
-/** Kontakte darüber gelten als hart [kn] */
-export const HARD_CONTACT_KN = 0.5;
 
 export interface ManeuverStatus {
   time: number;
@@ -68,6 +66,7 @@ export class Simulation {
   yacht: Yacht;
   env: Environment;
   lines: LineSystem;
+  fenders!: FenderSet;
   collisions = new CollisionSystem();
   targetBerthId: string;
   time = 0;
@@ -88,6 +87,7 @@ export class Simulation {
     this.lines = new LineSystem(lineSettings);
     this.targetBerthId = harbor.defaultTarget;
     this.yacht = this.makeYacht();
+    this.fenders = new FenderSet(this.yacht.model);
     this.collisions.setObstacles(harbor.piles, harbor.solids);
     this.resetStatus();
   }
@@ -118,6 +118,7 @@ export class Simulation {
     this.env.reset(opts.env);
     this.lines.clear();
     this.yacht = this.makeYacht();
+    this.fenders = new FenderSet(this.yacht.model);
     this.time = 0;
     this.accumulator = 0;
     this.trail = [];
@@ -161,7 +162,7 @@ export class Simulation {
     this.env.update(dt);
     const y = this.yacht;
     const lineForces = this.lines.update(y, dt);
-    const contactForces = this.collisions.update(y);
+    const contactForces = this.collisions.update(y, this.fenders.colliders(this.time));
     const current = this.env.currentAt(y.state.pos);
     const wind = this.env.windAt(y.state.pos);
     y.step(dt, current, wind, [...lineForces, ...contactForces]);
@@ -182,19 +183,26 @@ export class Simulation {
   private trackContacts(): void {
     const now = new Set<string>();
     for (const c of this.collisions.contacts) {
-      now.add(c.obstacleId);
-      if (!this.activeContacts.has(c.obstacleId)) {
-        const kn = c.approachSpeed / KN;
-        this.status.maxImpactKn = Math.max(this.status.maxImpactKn, kn);
-        if (kn < SOFT_CONTACT_KN) continue; // sanft an die Fender gelegt
-        this.status.contacts++;
-        const what = c.kind === 'pile' ? 'Dalbe' : c.kind === 'boat' ? 'anderes Boot' : c.kind === 'wall' ? 'Kaimauer' : 'Steg';
-        if (kn > HARD_CONTACT_KN) {
-          this.status.hardContacts++;
-          this.addLog(`Harter Kontakt mit ${what} (${kn.toFixed(1)} kn)!`, 'bad');
-        } else {
-          this.addLog(`Berührung ${what} (${kn.toFixed(2)} kn)`, 'warn');
-        }
+      // ein Fender und der Rumpf zählen getrennt; mehrere Rumpfpunkte am selben Hindernis einmal
+      const key = `${c.via === 'fender' ? c.fenderId : 'hull'}|${c.obstacleId}`;
+      now.add(key);
+      if (this.activeContacts.has(key)) continue;
+      const kn = c.approachSpeed / KN;
+      this.status.maxImpactKn = Math.max(this.status.maxImpactKn, kn);
+      const what = c.kind === 'pile' ? 'Dalbe' : c.kind === 'boat' ? 'anderes Boot' : c.kind === 'wall' ? 'Kaimauer' : 'Steg';
+      const rating = rateContact(c.via, c.kind, kn);
+      const by = c.via === 'fender' ? 'Fender an ' : '';
+      if (rating === 'free') {
+        if (c.via === 'fender' && kn >= 0.1) this.addLog(`Fender an ${what} (${kn.toFixed(1)} kn)`, 'info');
+        else if (c.kind === 'pile') this.addLog(`Dalbe sanft berührt (${kn.toFixed(2)} kn) – ohne Abzug`, 'info');
+        continue;
+      }
+      this.status.contacts++;
+      if (rating === 'hard') {
+        this.status.hardContacts++;
+        this.addLog(`Harter Kontakt: ${by}${what} (${kn.toFixed(1)} kn)!`, 'bad');
+      } else {
+        this.addLog(`Berührung: ${by}${what} (${kn.toFixed(2)} kn)`, 'warn');
       }
     }
     this.activeContacts = now;

@@ -1,7 +1,8 @@
 import { SCENARIOS, buildScenario, type Harbor } from './harbor/harbor';
 import { DEFAULT_ENV, type EnvironmentSettings } from './physics/environment';
 import { DEFAULT_LINE_SETTINGS, type LineMode, type LineSettings, type ShoreAnchor } from './physics/lines';
-import { KN, clamp, type Vec2 } from './physics/vec';
+import { KN, clamp, worldToBody, type Vec2 } from './physics/vec';
+import { BALL_FENDER, nearestHullPoint, type FenderSide } from './physics/fenders';
 import { IDLE_LEVER, NEUTRAL_ZONE } from './physics/yacht';
 import { SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from './physics/yachtConfig';
 import { Renderer, type Interaction } from './render/renderer';
@@ -47,6 +48,8 @@ const ia: Interaction = {
   selectedLine: null,
   showForces: false,
   flash: null,
+  placingBall: false,
+  ballPreview: null,
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -151,6 +154,16 @@ window.addEventListener('keydown', (e) => {
     case 'escape':
       ia.selectedCleat = null;
       ia.selectedLine = null;
+      setPlacingBall(false);
+      break;
+    case 'u':
+      toggleFenders('p');
+      break;
+    case 'i':
+      toggleFenders('s');
+      break;
+    case 'o':
+      setPlacingBall(!ia.placingBall);
       break;
     case '+':
       renderer.zoomAt({ x: renderer.width / 2, y: renderer.height / 2 }, 1.2);
@@ -269,10 +282,11 @@ canvas.addEventListener('pointermove', (e) => {
     }
     return;
   }
+  ia.ballPreview = ia.placingBall ? ballPreviewAt(s) : null;
   const p = pick(s);
   ia.hoverCleat = p.cleat;
   ia.hoverAnchor = p.anchor;
-  canvas.style.cursor = p.cleat || p.anchor ? 'pointer' : 'crosshair';
+  canvas.style.cursor = ia.placingBall ? 'copy' : p.cleat || p.anchor ? 'pointer' : 'crosshair';
 });
 
 canvas.addEventListener('pointerup', (e) => {
@@ -297,6 +311,18 @@ canvas.addEventListener(
 );
 
 function handleClick(s: Vec2): void {
+  if (ia.placingBall) {
+    const w = renderer.toWorld(s);
+    const st = sim.yacht.state;
+    const body = worldToBody({ x: w.x - st.pos.x, y: w.y - st.pos.y }, st.psi);
+    if (sim.fenders.placeBall(sim.yacht.model, body, sim.time)) {
+      sim.addLog('Ballfender wird ausgebracht …', 'info');
+      setPlacingBall(false);
+    } else {
+      flash('Näher am Rumpf klicken', w);
+    }
+    return;
+  }
   const p = pick(s);
   if (p.cleat) {
     ia.selectedCleat = ia.selectedCleat === p.cleat ? null : p.cleat;
@@ -324,6 +350,60 @@ function handleClick(s: Vec2): void {
     return;
   }
   ia.selectedCleat = null;
+}
+
+// ---------------------------------------------------------------------------
+// Fender
+// ---------------------------------------------------------------------------
+function toggleFenders(side: FenderSide): void {
+  const st = sim.fenders.sideState(side, sim.time);
+  const out = st.out === 0;
+  sim.fenders.setSide(side, out, sim.time);
+  sim.addLog(`Fender ${side === 'p' ? 'Bb' : 'Stb'} ${out ? 'werden ausgebracht …' : 'eingeholt'}`, 'info');
+}
+
+function setPlacingBall(on: boolean): void {
+  ia.placingBall = on;
+  if (!on) ia.ballPreview = null;
+  $('btn-fender-ball').classList.toggle('on', on);
+  canvas.style.cursor = on ? 'copy' : 'crosshair';
+}
+
+/** Vorschau: Ballfender an der Rumpfstelle, die dem Zeiger am nächsten ist. */
+function ballPreviewAt(s: Vec2): Vec2 | null {
+  const w = renderer.toWorld(s);
+  const st = sim.yacht.state;
+  const body = worldToBody({ x: w.x - st.pos.x, y: w.y - st.pos.y }, st.psi);
+  const e = nearestHullPoint(sim.yacht.model.outline, body);
+  if (e.dist > 2.5) return null;
+  const r = BALL_FENDER.r;
+  return sim.yacht.toWorld({ x: e.p.x + e.n.x * r, y: e.p.y + e.n.y * r });
+}
+
+$('btn-fender-p').addEventListener('click', () => toggleFenders('p'));
+$('btn-fender-s').addEventListener('click', () => toggleFenders('s'));
+$('btn-fender-ball').addEventListener('click', () => setPlacingBall(!ia.placingBall));
+$('btn-fender-ball-off').addEventListener('click', () => {
+  if (sim.fenders.ball) sim.addLog('Ballfender eingeholt', 'info');
+  sim.fenders.removeBall();
+});
+
+function renderFenders(): void {
+  const state = (side: FenderSide) => {
+    const s = sim.fenders.sideState(side, sim.time);
+    return s.out === 0 ? 'verstaut' : s.active < s.out ? `${s.active}/${s.out} …` : `${s.active} hängen`;
+  };
+  const p = sim.fenders.sideState('p', sim.time);
+  const sb = sim.fenders.sideState('s', sim.time);
+  $('btn-fender-p').textContent = p.out ? 'Bb einholen' : 'Bb raus';
+  $('btn-fender-s').textContent = sb.out ? 'Stb einholen' : 'Stb raus';
+  $('btn-fender-p').classList.toggle('on', p.out > 0);
+  $('btn-fender-s').classList.toggle('on', sb.out > 0);
+  const b = sim.fenders.ball;
+  const ball = !b ? 'nicht gesetzt' : sim.time < b.readyAt ? 'wird gebracht …' : 'hängt';
+  $('fender-state').textContent = `Bb: ${state('p')} · Stb: ${state('s')} · Ballfender: ${ball}`;
+  ($('btn-fender-ball-off') as HTMLButtonElement).disabled = !b;
+  $('btn-fender-ball').textContent = ia.placingBall ? 'Stelle am Rumpf anklicken…' : b ? 'Ballfender versetzen' : 'Ballfender setzen';
 }
 
 function flash(text: string, pos: Vec2): void {
@@ -375,6 +455,7 @@ function restart(): void {
   setHelm(0);
   ia.selectedCleat = null;
   ia.selectedLine = null;
+  setPlacingBall(false);
   bannerShown = false;
   $('banner').hidden = true;
   $('thruster-box').hidden = !yachtCfg.bowThruster.enabled;
@@ -634,6 +715,7 @@ function renderPanel(): void {
     bestSignature = '';
   }
   renderBest();
+  renderFenders();
   renderLines();
   renderLog();
 }
