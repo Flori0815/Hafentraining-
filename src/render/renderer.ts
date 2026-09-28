@@ -60,6 +60,7 @@ export class Renderer {
   ctx: CanvasRenderingContext2D;
   camera: Camera = { x: 0, y: -25, scale: 14, follow: true };
   private particles: Particle[] = [];
+  private windParticles: (Particle & { life: number })[] = [];
   private washParticles: Particle[] = [];
   private dpr = 1;
 
@@ -136,6 +137,7 @@ export class Renderer {
     ctx.fillRect(0, 0, this.width, this.height);
     this.drawGrid();
     this.drawCurrent(sim, realDt);
+    this.drawWind(sim, realDt);
     this.drawHarbor(sim.harbor, sim.targetBerthId);
     this.drawTrail(sim.trail);
     this.drawWash(sim, realDt);
@@ -167,6 +169,64 @@ export class Renderer {
       ctx.lineTo(this.width, s.y);
     }
     ctx.stroke();
+  }
+
+  /**
+   * Windstreifen auf dem Wasser: ziehen mit Windrichtung und
+   * Windgeschwindigkeit; Dichte nach Windstärke, in Böen kräftiger.
+   * Stege und Boote werden darüber gezeichnet (Streifen nur auf dem Wasser).
+   */
+  private drawWind(sim: Simulation, dt: number): void {
+    const env = sim.env;
+    const baseKn = env.settings.windSpeedKn;
+    const w = env.windAt(sim.yacht.state.pos);
+    const sp = Math.hypot(w.x, w.y);
+    const target = sp > 0.05 ? Math.round(Math.min(220, baseKn * 8)) : 0;
+    const tl = this.toWorld({ x: 0, y: 0 });
+    const br = this.toWorld({ x: this.width, y: this.height });
+    const spawn = () => ({
+      x: tl.x + Math.random() * (br.x - tl.x),
+      y: br.y + Math.random() * (tl.y - br.y),
+      age: 0,
+      life: 1.2 + Math.random() * 1.8,
+    });
+    while (this.windParticles.length < target) {
+      const p = spawn();
+      p.age = Math.random() * p.life;
+      this.windParticles.push(p);
+    }
+    if (this.windParticles.length > target) this.windParticles.length = target;
+    if (target === 0) return;
+
+    const ctx = this.ctx;
+    const ux = w.x / sp;
+    const uy = w.y / sp;
+    const run = sim.paused ? 0 : sim.timeScale;
+    // Böenfaktor: aktuelle / eingestellte Windgeschwindigkeit
+    const gust = baseKn > 0 ? sp / (baseKn * KN) : 1;
+    const baseAlpha = Math.min(0.4, 0.08 + 0.2 * (baseKn / 20) * gust);
+    const len = Math.max(6, sp * 0.35 * this.camera.scale);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    for (const p of this.windParticles) {
+      p.x += w.x * dt * run;
+      p.y += w.y * dt * run;
+      p.age += dt * (run || 1);
+      if (p.age > p.life || p.x < tl.x - 10 || p.x > br.x + 10 || p.y > tl.y + 10 || p.y < br.y - 10) {
+        Object.assign(p, spawn());
+      }
+      // weich ein- und ausblenden
+      const t = p.age / p.life;
+      const a = baseAlpha * Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+      if (a < 0.01) continue;
+      const s = this.toScreen(p);
+      ctx.strokeStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x - ux * len, s.y + uy * len);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
   }
 
   private drawCurrent(sim: Simulation, dt: number): void {
