@@ -7,6 +7,10 @@
  *  - fieren (kontrolliert nachgeben),
  *  - belegen (feste Länge; Eindampfen in die Leine möglich),
  *  - loswerfen.
+ *
+ * Eine Manöverleine (Kraftdreieck) läuft von einer Bordklampe um den
+ * Festpunkt zurück zu einer zweiten Bordklampe und rutscht dort mit etwas
+ * Reibung durch. Losgeworfen wird sie von Bord (über Slip einholen).
  */
 import { clamp, dist, dot, norm, scale, sub, type Vec2 } from './vec';
 import type { ExternalForce, Yacht } from './yacht';
@@ -40,6 +44,12 @@ export interface LineSettings {
   axialStiffness: number;
   /** Bruchlast [N] */
   breakingLoad: number;
+  /** Maximale Gesamtlänge der Manöverleine (beide Parten) [m] */
+  slipMaxLength: number;
+  /** Reibungsbeiwert der Leine um Dalbe/Poller (Umschlingung ~180°) */
+  slipFriction: number;
+  /** Losbrechkraft am Festpunkt, auch ohne Last [N] */
+  slipBaseResistance: number;
 }
 
 export const DEFAULT_LINE_SETTINGS: LineSettings = {
@@ -52,7 +62,22 @@ export const DEFAULT_LINE_SETTINGS: LineSettings = {
   maxLength: 25,
   axialStiffness: 60000,
   breakingLoad: 30000,
+  slipMaxLength: 40,
+  slipFriction: 0.1,
+  slipBaseResistance: 60,
 };
+
+/**
+ * Feste Part einer Manöverleine (Kraftdreieck): von der zweiten Klampe an
+ * Bord zum Festpunkt. Dort läuft die Leine mit etwas Reibung durch.
+ */
+export interface SlipLeg {
+  cleatId: string;
+  /** ungedehnte Länge dieser Part [m] */
+  length: number;
+  tension: number;
+  slack: number;
+}
 
 export interface MooringLine {
   id: number;
@@ -65,7 +90,15 @@ export interface MooringLine {
   /** Momentane Überlänge (Durchhang) [m], > 0 = lose */
   slack: number;
   broken: boolean;
+  /**
+   * Nur bei Manöverleinen: die zweite, an Bord belegte Part. `cleatId`,
+   * `length`, `tension` beschreiben dann die Holepart, an der die Crew
+   * arbeitet; `slack` ist die Lose der ganzen Leine.
+   */
+  slip?: SlipLeg;
 }
+
+export const isSlip = (l: MooringLine): l is MooringLine & { slip: SlipLeg } => !!l.slip;
 
 /**
  * Leine rutscht durch (Hände, Klampe), sobald der Zug `limit` übersteigt:
@@ -136,6 +169,35 @@ export class LineSystem {
     return line;
   }
 
+  /**
+   * Manöverleine (Kraftdreieck) ausbringen: von `fixedCleatId` um den
+   * Festpunkt herum zurück an Bord auf `workCleatId`. Die Bucht wird von der
+   * ersten Klampe aus über den Festpunkt geworfen bzw. gelegt; die feste
+   * Part ist belegt, an der Holepart arbeitet die Crew.
+   */
+  attachSlip(yacht: Yacht, fixedCleatId: string, anchor: ShoreAnchor, workCleatId: string): MooringLine | null {
+    if (fixedCleatId === workCleatId) return null;
+    const reach = this.canReach(yacht, fixedCleatId, anchor);
+    const w = yacht.cleatWorld(workCleatId);
+    if (!reach.ok || !w) return null;
+    const dFixed = reach.distance;
+    const dWork = dist(w, anchor.pos);
+    if (dFixed + dWork + 0.6 > this.settings.slipMaxLength) return null;
+    const line: MooringLine = {
+      id: this.nextId++,
+      cleatId: workCleatId,
+      anchor,
+      length: dWork + 0.4,
+      mode: 'hand',
+      tension: 0,
+      slack: 0.6,
+      broken: false,
+      slip: { cleatId: fixedCleatId, length: dFixed + 0.2, tension: 0, slack: 0.2 },
+    };
+    this.lines.push(line);
+    return line;
+  }
+
   release(id: number): void {
     this.lines = this.lines.filter((l) => l.id !== id);
   }
@@ -157,24 +219,13 @@ export class LineSystem {
     const s = this.settings;
     const forces: ExternalForce[] = [];
     for (const line of this.lines) {
-      const cleat = yacht.model.cleats.find((c) => c.id === line.cleatId);
-      if (!cleat) continue;
-      const p = yacht.toWorld(cleat.pos);
-      const d = sub(line.anchor.pos, p);
-      const distance = Math.hypot(d.x, d.y);
-      const dir = norm(d); // zeigt vom Boot zum Festpunkt
-      const vp = yacht.pointVelocity(cleat.pos);
-      // Änderungsrate des Abstands (positiv = Leine wird länger gezogen)
-      const dDist = -dot(vp, dir);
-
+      const work = this.leg(yacht, line.cleatId, line.anchor, line.length);
+      if (!work) continue;
+      const fixed = line.slip ? this.leg(yacht, line.slip.cleatId, line.anchor, line.slip.length) : null;
+      if (line.slip && !fixed) continue;
+      const { p, dir, distance, k } = work;
       const L = Math.max(0.3, line.length);
-      const k = s.axialStiffness / L;
-      const stretch = distance - L;
-      let tension = 0;
-      if (stretch > 0) {
-        const c = 2 * 0.25 * Math.sqrt(k * yacht.model.mass);
-        tension = Math.max(0, k * stretch + c * dDist);
-      }
+      let tension = work.tension;
 
       // Crew/Modus: Länge anpassen
       switch (line.mode) {
@@ -197,21 +248,87 @@ export class LineSystem {
         case 'cleated':
           break;
       }
-      line.length = clamp(line.length, 0.3, s.maxLength);
-      if (line.length >= s.maxLength && line.mode !== 'cleated' && tension > s.handHoldForce) {
+      let fixedTension = 0;
+      if (line.slip && fixed) {
+        const r = this.slide(line, line.slip, tension, fixed.tension, k, fixed.k, dt);
+        tension = r.work;
+        fixedTension = r.fixed;
+      }
+      const maxLen = line.slip ? s.slipMaxLength - line.slip.length : s.maxLength;
+      line.length = clamp(line.length, 0.3, maxLen);
+      if (line.length >= maxLen && line.mode !== 'cleated' && tension > s.handHoldForce) {
         // Ende der Leine erreicht – gilt dann als belegt (Stopperstek am Ende)
         line.mode = 'cleated';
         this.events.push(`Leine ${line.id}: Ende erreicht`);
       }
-      if (tension > s.breakingLoad) {
+      if (Math.max(tension, fixedTension) > s.breakingLoad) {
         line.broken = true;
         this.events.push(`Leine ${line.id} gebrochen!`);
       }
       line.tension = tension;
       line.slack = Math.max(0, L - distance);
       if (tension > 0) forces.push({ point: p, force: scale(dir, tension) });
+      if (line.slip && fixed) {
+        const leg = line.slip;
+        leg.tension = fixedTension;
+        leg.slack = Math.max(0, leg.length - fixed.distance);
+        // Lose der ganzen Leine: sie rutscht um den Festpunkt, beide Parten zählen
+        line.slack = Math.max(0, L + leg.length - distance - fixed.distance);
+        if (fixedTension > 0) forces.push({ point: fixed.p, force: scale(fixed.dir, fixedTension) });
+      }
     }
     this.lines = this.lines.filter((l) => !l.broken);
     return forces;
+  }
+
+  /** Elastischer Zug in einer Part zwischen Bordklampe und Festpunkt. */
+  private leg(yacht: Yacht, cleatId: string, anchor: ShoreAnchor, length: number) {
+    const cleat = yacht.model.cleats.find((c) => c.id === cleatId);
+    if (!cleat) return null;
+    const p = yacht.toWorld(cleat.pos);
+    const d = sub(anchor.pos, p);
+    const distance = Math.hypot(d.x, d.y);
+    const dir = norm(d); // zeigt vom Boot zum Festpunkt
+    const vp = yacht.pointVelocity(cleat.pos);
+    // Änderungsrate des Abstands (positiv = Leine wird länger gezogen)
+    const dDist = -dot(vp, dir);
+    const L = Math.max(0.3, length);
+    const k = this.settings.axialStiffness / L;
+    const stretch = distance - L;
+    let tension = 0;
+    if (stretch > 0) {
+      const c = 2 * 0.25 * Math.sqrt(k * yacht.model.mass);
+      tension = Math.max(0, k * stretch + c * dDist);
+    }
+    return { p, dir, distance, k, tension };
+  }
+
+  /**
+   * Manöverleine: Die Leine rutscht um den Festpunkt von der stärker zur
+   * schwächer belasteten Part, sobald der Zugunterschied die Reibung
+   * übersteigt (Seilreibung, Umschlingung ~180°, plus Losbrechkraft).
+   * Gibt die Züge nach dem Durchrutschen zurück.
+   */
+  private slide(line: MooringLine, leg: SlipLeg, work: number, fixed: number, kWork: number, kFixed: number, dt: number) {
+    const s = this.settings;
+    const low = Math.min(work, fixed);
+    const resistance = s.slipBaseResistance + low * (Math.exp(s.slipFriction * Math.PI) - 1);
+    const diff = fixed - work;
+    if (Math.abs(diff) <= resistance) return { work, fixed };
+    // eine lose Part nimmt beim Nachrutschen zunächst keinen Zug auf
+    const kIn = diff > 0 ? (work > 0 ? kWork : 0) : fixed > 0 ? kFixed : 0;
+    const kOut = diff > 0 ? kFixed : kWork;
+    const step = Math.min((Math.abs(diff) - resistance) / (kIn + kOut), 3 * dt);
+    if (diff > 0) {
+      // Zug in der festen Part überwiegt: Leine läuft zur festen Part hin
+      const d = Math.min(step, line.length - 0.3);
+      leg.length += d;
+      line.length -= d;
+      return { work: work + kIn * d, fixed: fixed - kOut * d };
+    }
+    const d = Math.min(step, leg.length - 0.3);
+    leg.length -= d;
+    line.length += d;
+    return { work: work - kOut * d, fixed: fixed + kIn * d };
   }
 }

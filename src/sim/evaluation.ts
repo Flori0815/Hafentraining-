@@ -62,7 +62,8 @@ export function checkRequirements(berth: Berth, yacht: Yacht, lines: MooringLine
   return berth.requirements.map((req) => {
     const state: RequirementState = { req, ok: 0, slack: [], notCleated: 0 };
     for (const l of lines) {
-      if (used.has(l.id) || !req.anchors.includes(l.anchor.id)) continue;
+      // Manöverleinen sind Hilfsmittel und ersetzen keine Festmacher
+      if (l.slip || used.has(l.id) || !req.anchors.includes(l.anchor.id)) continue;
       if (classifyLine(berth.kind, yacht, l) !== req.role) continue;
       if (l.mode !== 'cleated') {
         state.notCleated++;

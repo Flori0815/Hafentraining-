@@ -25,6 +25,10 @@ export interface Interaction {
   placingBall: boolean;
   /** Vorschau der Ballfender-Position (Weltkoordinaten) */
   ballPreview: Vec2 | null;
+  /** Manöverleine ausbringen: Klampe → Festpunkt → zweite Klampe */
+  slipMode: boolean;
+  /** Manöverleine: erste Klampe und Festpunkt schon gewählt */
+  slipFrom: { cleat: string; anchor: ShoreAnchor } | null;
 }
 
 interface Particle {
@@ -550,31 +554,63 @@ export class Renderer {
     }
   }
 
+  /** Leine zwischen zwei Bildschirmpunkten; Durchhang als Bogen (seitlich treibende Lose). */
+  private strokeRope(a: Vec2, b: Vec2, slack: number, color: string, width: number): void {
+    const ctx = this.ctx;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    if (slack > 0.02) {
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dl = Math.hypot(dx, dy) || 1;
+      const sag = Math.min(3, Math.sqrt((slack * dl) / this.camera.scale) * 0.8) * this.camera.scale;
+      ctx.quadraticCurveTo(mx - (dy / dl) * sag, my + (dx / dl) * sag, b.x, b.y);
+    } else {
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  }
+
   private drawLines(sim: Simulation, ia: Interaction): void {
     const ctx = this.ctx;
     const y = sim.yacht;
+    if (ia.slipFrom) {
+      // Vorschau: Bucht liegt schon über dem Festpunkt, zweite Klampe fehlt noch
+      const c = y.cleatWorld(ia.slipFrom.cleat);
+      if (c) {
+        ctx.setLineDash([4, 4]);
+        this.strokeRope(this.toScreen(c), this.toScreen(ia.slipFrom.anchor.pos), 0.5, '#fbbf24', 2);
+        ctx.setLineDash([]);
+      }
+    }
     for (const l of sim.lines.lines) {
       const cleat = y.model.cleats.find((c) => c.id === l.cleatId);
       if (!cleat) continue;
       const a = this.toScreen(y.toWorld(cleat.pos));
       const b = this.toScreen(l.anchor.pos);
-      ctx.strokeStyle = this.lineColor(l, 3000);
-      ctx.lineWidth = ia.selectedLine === l.id ? 3.5 : 2;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      if (l.slack > 0.02) {
-        // Durchhang als Bogen (in Draufsicht: seitlich treibende Lose)
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dl = Math.hypot(dx, dy) || 1;
-        const sag = Math.min(3, Math.sqrt(l.slack * dl / this.camera.scale) * 0.8) * this.camera.scale;
-        ctx.quadraticCurveTo(mx - (dy / dl) * sag, my + (dx / dl) * sag, b.x, b.y);
+      const width = ia.selectedLine === l.id ? 3.5 : 2;
+      if (l.slip) {
+        // Manöverleine: feste Part von der zweiten Klampe zum Festpunkt, gestrichelt markiert
+        const fc = y.cleatWorld(l.slip.cleatId);
+        if (fc) {
+          ctx.setLineDash([7, 3]);
+          this.strokeRope(this.toScreen(fc), b, l.slip.slack, this.lineColor({ ...l, tension: l.slip.tension }, 3000), width);
+          this.strokeRope(a, b, l.slack, this.lineColor(l, 3000), width);
+          ctx.setLineDash([]);
+          // Umlenkung am Festpunkt
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, Math.max(5, 0.28 * this.camera.scale), 0, Math.PI * 2);
+          ctx.stroke();
+        }
       } else {
-        ctx.lineTo(b.x, b.y);
+        this.strokeRope(a, b, l.slack, this.lineColor(l, 3000), width);
       }
-      ctx.stroke();
       // Nummer
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       const lx = a.x + (b.x - a.x) * 0.35;

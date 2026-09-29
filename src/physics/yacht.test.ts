@@ -303,3 +303,77 @@ describe('Leinen', () => {
     expect(d).toBeLessThan(3);
   });
 });
+
+describe('Manöverleine (Kraftdreieck)', () => {
+  // Kurs Nord, Steg an Stb (Osten); Poller querab der Mitte
+  const setup = () => {
+    const y = new Yacht(SAILING_YACHT_36);
+    const ls = new LineSystem();
+    const mid = y.cleatWorld('mid-s')!;
+    const a: ShoreAnchor = { id: 'k', kind: 'bollard', pos: { x: mid.x + 3, y: mid.y }, label: 'Poller' };
+    return { y, ls, a };
+  };
+  const sim = (y: Yacht, ls: LineSystem, seconds: number, wind: Vec2 = calm, each?: () => void) => {
+    for (let i = 0; i < 240 * seconds; i++) {
+      const f = ls.update(y, DT);
+      y.step(DT, calm, wind, f);
+      each?.();
+    }
+  };
+
+  it('braucht zwei verschiedene Klampen und Wurfweite zur ersten', () => {
+    const { y, ls, a } = setup();
+    expect(ls.attachSlip(y, 'bow-s', a, 'bow-s')).toBeNull();
+    const far: ShoreAnchor = { ...a, id: 'f', pos: { x: 30, y: 0 } };
+    expect(ls.attachSlip(y, 'bow-s', far, 'stern-s')).toBeNull();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    expect(l).not.toBeNull();
+    expect(l.cleatId).toBe('stern-s');
+    expect(l.slip?.cleatId).toBe('bow-s');
+  });
+
+  it('Dichtholen zieht Bug und Heck gleichmäßig an den Steg, beide Parten tragen', () => {
+    const { y, ls, a } = setup();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    ls.setMode(l.id, 'heave');
+    let maxSkew = 0;
+    sim(y, ls, 40, calm, () => {
+      const line = ls.lines[0];
+      const low = Math.min(line.tension, line.slip!.tension);
+      const allowed = ls.settings.slipBaseResistance + low * (Math.exp(ls.settings.slipFriction * Math.PI) - 1);
+      maxSkew = Math.max(maxSkew, Math.abs(line.tension - line.slip!.tension) - allowed);
+    });
+    const line = ls.lines[0];
+    expect(line.tension).toBeGreaterThan(100);
+    expect(line.slip!.tension).toBeGreaterThan(100);
+    // Zugunterschied bleibt (bis auf Dämpfung) innerhalb der Reibung am Poller
+    expect(maxSkew).toBeLessThan(300);
+    // Boot bleibt etwa parallel zum Steg
+    expect(Math.min(y.headingDeg, 360 - y.headingDeg)).toBeLessThan(15);
+    expect(a.pos.x - y.cleatWorld('mid-s')!.x).toBeLessThan(2.5);
+  });
+
+  it('Leine rutscht um den Festpunkt, wenn das Boot längs verholt', () => {
+    const { y, ls, a } = setup();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    ls.setMode(l.id, 'cleated');
+    const fixed0 = l.slip!.length;
+    const total0 = l.length + l.slip!.length;
+    // langsam voraus: der Bug entfernt sich vom Poller, das Heck nähert sich
+    y.controls.throttle = 0.25;
+    sim(y, ls, 15);
+    const line = ls.lines[0];
+    expect(line.slip!.length).toBeGreaterThan(fixed0 + 0.5);
+    // die Gesamtlänge bleibt bei belegter Holepart erhalten
+    expect(line.length + line.slip!.length).toBeCloseTo(total0, 5);
+  });
+
+  it('wird von Bord über Slip eingeholt – keine Kraft mehr', () => {
+    const { y, ls, a } = setup();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    ls.setMode(l.id, 'cleated');
+    ls.release(l.id);
+    expect(ls.lines).toHaveLength(0);
+    expect(ls.update(y, DT)).toEqual([]);
+  });
+});
