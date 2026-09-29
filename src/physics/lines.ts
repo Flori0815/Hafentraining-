@@ -115,6 +115,27 @@ export class LineSystem {
     return line;
   }
 
+  /**
+   * Leine direkt belegt anlegen (z. B. Startzustand beim Ablegen): ohne
+   * Wurfweiten-Prüfung, auf aktuelle Distanz, stramm.
+   */
+  attachDirect(yacht: Yacht, cleatId: string, anchor: ShoreAnchor): MooringLine | null {
+    const c = yacht.cleatWorld(cleatId);
+    if (!c) return null;
+    const line: MooringLine = {
+      id: this.nextId++,
+      cleatId,
+      anchor,
+      length: Math.max(0.3, dist(c, anchor.pos)),
+      mode: 'cleated',
+      tension: 0,
+      slack: 0,
+      broken: false,
+    };
+    this.lines.push(line);
+    return line;
+  }
+
   release(id: number): void {
     this.lines = this.lines.filter((l) => l.id !== id);
   }
