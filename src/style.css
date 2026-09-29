@@ -208,6 +208,25 @@ button.primary {
   color: var(--muted);
   gap: 6px;
 }
+.slip-steer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.slip-steer input {
+  width: 100%;
+  accent-color: #fbbf24;
+}
+.slip-steer output {
+  text-align: center;
+  font-size: 12px;
+}
+.crew-warn {
+  color: #fbbf24;
+  font-weight: 600;
+}
 .thruster button.active {
   background: #3b2f6b;
   border-color: #a78bfa;

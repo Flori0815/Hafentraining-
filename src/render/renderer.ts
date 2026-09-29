@@ -150,6 +150,7 @@ export class Renderer {
     this.drawYacht(sim, ia);
     this.drawFenders(sim, ia);
     this.drawLines(sim, ia);
+    this.drawCrew(sim);
     this.drawAnchors(sim, ia);
     this.drawContacts(sim);
     if (ia.showForces) this.drawForces(sim);
@@ -551,6 +552,33 @@ export class Renderer {
       ctx.arc(s.x, s.y, Math.max(4, 0.3 * this.camera.scale), 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+  }
+
+  /** Einhand: Skipper an Deck; Warnung, solange das Ruder unbesetzt ist. */
+  private drawCrew(sim: Simulation): void {
+    const c = sim.crew;
+    if (c.mode !== 'solo') return;
+    const ctx = this.ctx;
+    const y = sim.yacht;
+    const s = this.toScreen(y.toWorld(c.pos));
+    const r = Math.max(4, 0.28 * this.camera.scale);
+    ctx.fillStyle = c.atHelm ? '#38bdf8' : '#fbbf24';
+    ctx.strokeStyle = '#0b1620';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (!c.atHelm) {
+      const h = this.toScreen(y.toWorld(c.helm));
+      ctx.strokeStyle = 'rgba(251,191,36,0.9)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      this.label('Ruder unbesetzt', h.x + 12, h.y + 14);
     }
   }
 

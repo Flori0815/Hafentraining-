@@ -4,7 +4,7 @@
  */
 import { CollisionSystem } from '../physics/collision';
 import { DEFAULT_ENV, Environment, type EnvironmentSettings } from '../physics/environment';
-import { DEFAULT_LINE_SETTINGS, LineSystem, type LineSettings } from '../physics/lines';
+import { DEFAULT_LINE_SETTINGS, LineSystem, type LineSettings, type MooringLine } from '../physics/lines';
 import { KN, closestOnSegment, dist, pointInPolygon, type Vec2 } from '../physics/vec';
 import { Yacht } from '../physics/yacht';
 import type { YachtConfig } from '../physics/yachtConfig';
@@ -23,6 +23,7 @@ import type { TaskDef } from '../tasks/types';
 import { mooringPlan, pierSide, placeMoored } from './mooring';
 import { ORIENTATION_LABEL } from '../tasks/types';
 import { FenderSet } from '../physics/fenders';
+import { Crew, type CrewMode } from './crew';
 
 export const PHYSICS_DT = 1 / 240;
 
@@ -69,6 +70,8 @@ export interface ManeuverResult {
   stars: 1 | 2 | 3;
   windKn: number;
   currentKn: number;
+  /** Besatzung beim Manöver */
+  crew?: CrewMode;
   date: string;
 }
 
@@ -85,6 +88,11 @@ export class Simulation {
   env: Environment;
   lines: LineSystem;
   fenders!: FenderSet;
+  crew!: Crew;
+  /** Besatzung im freien Training (Aufgaben geben sie ggf. vor) */
+  crewMode: CrewMode = 'crew';
+  /** Oberfläche: eine Leine wurde ausgebracht (z. B. um sie auszuwählen) */
+  onLineAttached?: (line: MooringLine) => void;
   collisions = new CollisionSystem();
   targetBerthId: string;
   /** aktive Aufgabe; null = freies Training */
@@ -108,6 +116,7 @@ export class Simulation {
     this.targetBerthId = harbor.defaultTarget;
     this.yacht = this.makeYacht();
     this.fenders = new FenderSet(this.yacht.model);
+    this.crew = this.makeCrew();
     this.collisions.setObstacles(harbor.piles, harbor.solids);
     this.resetStatus();
   }
@@ -115,6 +124,23 @@ export class Simulation {
   private makeYacht(): Yacht {
     const s = this.task?.start ?? this.harbor.start;
     return new Yacht(this.yachtConfig, s.pos, s.headingDeg, s.speedKn);
+  }
+
+  /** Besatzung der aktuellen Aufgabe bzw. des freien Trainings. */
+  get effectiveCrewMode(): CrewMode {
+    return this.task?.crew ?? this.crewMode;
+  }
+
+  private makeCrew(): Crew {
+    return new Crew(this.yacht.model, this.effectiveCrewMode, {
+      log: (text, level) => this.addLog(text, level),
+      secureLine: (id) => {
+        const l = this.lines.lines.find((x) => x.id === id);
+        if (!l || l.cockpit || l.mode === 'cleated') return false;
+        l.mode = 'cleated';
+        return true;
+      },
+    });
   }
 
   /** Startzustand der Aufgabe herstellen: vorbelegte Leinen, hängende Fender. */
@@ -172,6 +198,7 @@ export class Simulation {
     this.lines.clear();
     this.yacht = this.makeYacht();
     this.fenders = new FenderSet(this.yacht.model);
+    this.crew = this.makeCrew();
     this.time = 0;
     this.accumulator = 0;
     this.trail = [];
@@ -222,6 +249,7 @@ export class Simulation {
     const dt = PHYSICS_DT;
     this.env.update(dt);
     const y = this.yacht;
+    this.crew.update(dt, y.controls);
     const lineForces = this.lines.update(y, dt);
     const contactForces = this.collisions.update(y, this.fenders.colliders(this.time));
     const current = this.env.currentAt(y.state.pos);
@@ -295,6 +323,7 @@ export class Simulation {
       stars: starRating(s.contacts, s.hardContacts),
       windKn: this.env.settings.windSpeedKn,
       currentKn: this.env.settings.currentSpeedKn,
+      crew: this.effectiveCrewMode,
       date: new Date().toISOString(),
     };
     s.message = `${what} nach ${formatTime(this.time)} – ${'★'.repeat(s.result.stars)}${'☆'.repeat(3 - s.result.stars)} · Kontakte: ${s.contacts}, harte: ${s.hardContacts}`;

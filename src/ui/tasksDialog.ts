@@ -30,6 +30,7 @@ export function taskSummary(t: TaskDef): string {
   parts.push(env.windSpeedKn > 0 ? `Wind ${env.windSpeedKn} kn aus ${Math.round(env.windFromDeg)}°${env.gustiness >= 0.3 ? ', böig' : ''}` : 'Flaute');
   if (env.currentSpeedKn > 0) parts.push(`Strom ${env.currentSpeedKn} kn`);
   if (t.yacht === 'sy36-long') parts.push('Langkieler');
+  if (t.crew === 'solo') parts.push('Einhand');
   return parts.join(' · ');
 }
 
@@ -40,6 +41,7 @@ export class TasksDialog {
   private progressEl: HTMLElement;
   private filter: Difficulty | 0 = 0;
   private kind: 'all' | 'moor' | 'depart' = 'all';
+  private soloOnly = false;
   private onStart: (t: TaskDef) => void;
   private activeId: () => string | null;
 
@@ -51,6 +53,11 @@ export class TasksDialog {
     this.onStart = onStart;
     this.activeId = activeId;
     this.filterEl.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button[data-solo]')) {
+        this.soloOnly = !this.soloOnly;
+        this.render();
+        return;
+      }
       const k = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-kind]');
       if (k) {
         this.kind = k.dataset.kind as 'all' | 'moor' | 'depart';
@@ -90,15 +97,17 @@ export class TasksDialog {
     const stars = all.reduce((s, t) => s + (best.get(t.id)?.stars ?? 0), 0);
     this.progressEl.textContent = `${solved}/${all.length} gelöst · ${stars}/${all.length * 3} ★`;
 
-    const ofKind = this.kind === 'all' ? all : all.filter((t) => t.goal.kind === this.kind);
+    const pool = this.soloOnly ? all.filter((t) => t.crew === 'solo') : all;
+    const ofKind = this.kind === 'all' ? pool : pool.filter((t) => t.goal.kind === this.kind);
     const counts = (d: Difficulty) => ofKind.filter((t) => t.difficulty === d).length;
     const chip = (d: Difficulty | 0, label: string) =>
       `<button type="button" data-diff="${d}" class="${this.filter === d ? 'on' : ''}">${label}</button>`;
     const kindChip = (k: 'all' | 'moor' | 'depart', label: string, n: number) =>
       `<button type="button" data-kind="${k}" class="${this.kind === k ? 'on' : ''}">${label} (${n})</button>`;
-    const nKind = (k: 'moor' | 'depart') => all.filter((t) => t.goal.kind === k).length;
+    const nKind = (k: 'moor' | 'depart') => pool.filter((t) => t.goal.kind === k).length;
+    const nSolo = all.filter((t) => t.crew === 'solo').length;
     this.filterEl.innerHTML =
-      `<div class="filter-row">${kindChip('all', 'Alle Arten', all.length)}${kindChip('moor', '⚓ Anlegen', nKind('moor'))}${kindChip('depart', '⛵ Ablegen', nKind('depart'))}</div>` +
+      `<div class="filter-row">${kindChip('all', 'Alle Arten', pool.length)}${kindChip('moor', '⚓ Anlegen', nKind('moor'))}${kindChip('depart', '⛵ Ablegen', nKind('depart'))}<button type="button" data-solo="1" class="${this.soloOnly ? 'on' : ''}" title="Nur Aufgaben für Einhandsegler">👤 Einhand (${nSolo})</button></div>` +
       `<div class="filter-row">${chip(0, `Alle Stufen (${ofKind.length})`)}${([1, 2, 3, 4, 5] as Difficulty[])
         .map((d) => chip(d, `${difficultyDots(d)} ${DIFFICULTY_LABEL[d]} (${counts(d)})`))
         .join('')}</div>`;
@@ -115,7 +124,7 @@ export class TasksDialog {
         return `<div class="task-card d${t.difficulty} ${t.id === active ? 'active' : ''}">
           <div class="task-head">
             <span class="diff" title="${DIFFICULTY_LABEL[t.difficulty]}">${difficultyDots(t.difficulty)}</span>
-            <b>${t.goal.kind === 'depart' ? '⛵ ' : '⚓ '}${esc(t.title)}</b>
+            <b>${t.goal.kind === 'depart' ? '⛵ ' : '⚓ '}${t.crew === 'solo' ? '👤 ' : ''}${esc(t.title)}</b>
             ${result}
           </div>
           <div class="task-sum">${esc(taskSummary(t))}</div>
