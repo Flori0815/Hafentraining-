@@ -87,7 +87,14 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 Maus/Touch: Ziehen verschiebt die Karte, Mausrad/Pinch zoomt. Gashebel und
 Ruder gibt es auch als Schieberegler (mobil bedienbar).
 
-**Szenarien** (Dialog „Bedingungen“):
+**Aufgaben** (Dialog „📋 Aufgaben“): 22 Aufgaben in fünf Schwierigkeitsstufen
+(●○○○○ Einsteiger … ●●●●● Experte), Anlegen und Ablegen, mit Wind, Böen,
+Strömung, Ausrichtungs-Vorgaben (rückwärts in die Box, Steuerbord längsseits)
+und Langkieler. Jede Aufgabe hat eine Einweisung; Bestleistung und Fortschritt
+werden gespeichert, „Nächste Aufgabe“ führt durch die Lernreihenfolge.
+„Freies Training“ lässt Szenario, Liegeplatz und Bedingungen frei wählen.
+
+**Szenarien** (Häfen):
 
 | Szenario | Liegeplätze | nötige Leinen |
 |---|---|---|
@@ -132,7 +139,8 @@ src/
   sim/simulation.ts Fester Zeitschritt, Kontakte, Ergebnis, Logbuch
   sim/evaluation.ts Leinen-Rollen, Anforderungen je Liegeplatz, Sterne
   render/renderer.ts Canvas-Draufsicht
-  ui/               Yacht-Editor, Ergebnisse/Bestleistungen, Persistenz (localStorage)
+  tasks/            Aufgaben: Format (types.ts), Katalog (catalog.ts), Katalog-Prüfung (tasks.test.ts)
+  ui/               Aufgaben-Dialog, Yacht-Editor, Ergebnisse/Bestleistungen, Persistenz
   main.ts           Eingabe, Panels, Dialoge
 ```
 
@@ -141,11 +149,41 @@ Maschine/Propeller, Windangriff, Bugstrahlruder) editierbar, JSON-Export/-Import
 zum Teilen. Neue Parameter werden im Feld-Schema von `src/ui/yachtEditor.ts`
 mit einer Zeile ergänzt.
 
+## Neue Aufgaben und Häfen hinzufügen
+
+**Aufgabe:** ein Eintrag in `src/tasks/catalog.ts` (Format in
+`src/tasks/types.ts`), z. B.
+
+```ts
+{
+  id: 'box-rueckwaerts-boeig',            // eindeutig
+  title: 'Rückwärts in die Box bei Böen',
+  difficulty: 4,                          // 1 Einsteiger … 5 Experte
+  harbor: 'boxengasse',                   // ID aus SCENARIOS
+  goal: { kind: 'moor', berth: 'box-n12', orientation: 'sternToPier' },
+  env: { windSpeedKn: 16, windFromDeg: 240, gustiness: 0.4 }, // Rest = 0
+  briefing: 'Kurze Einweisung mit Tipp …',
+  tags: ['Box', 'Rückwärts'],
+}
+```
+
+Optional: `start` (Startlage), `initialLines` (belegte Leinen zu Beginn,
+z. B. für Ablegen), `fenders` (hängen schon), `yacht` (Vorlage, z. B.
+`'sy36-long'`). Ablegen: `goal: { kind: 'depart', berth, zone, zoneLabel }`.
+`npm test` prüft jede Aufgabe automatisch: gültige Daten, kollisionsfreier
+Start und grundsätzliche Lösbarkeit (ein Musterskipper legt korrekt an bzw.
+ab). Eine fehlerhafte Aufgabe fällt sofort auf.
+
+**Hafen:** Builder-Funktion in `src/harbor/harbor.ts` aus den Bausteinen
+`addBoxRow` (Boxen mit Dalben) und `addAlongsideRow` (Längsseits-Steg mit
+Lücken) oder eigenen Polygonen; in `SCENARIOS` registrieren. Liegeplätze
+bringen ihre Leinen-Anforderungen und die Richtung zum Steg (`pierDir`) mit.
+
 ## Roadmap
 
 - Weitere Häfen/Manöver (Mooring/Heckanker, Schwimmsteg, Tidenstrom) + Hafen-Editor
 - Crew-Positionen (wer steht wo, Übersteigen), Leinen über Slip, Umlenken an der Winsch
 - Windabdeckung durch Boote/Gebäude, räumlich variable Strömung, Bank-Effekt
 - Schadensmodell
-- Manöver-Replay und Aufgabenkatalog mit Bewertung
+- Manöver-Replay, Zeitvorgaben für Aufgaben, weitere Aufgaben und Häfen
 - Motorboote (Zwei-Maschinen, Joystick), Katamarane

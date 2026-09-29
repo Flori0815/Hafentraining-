@@ -15,9 +15,12 @@ import {
   STABLE_MAX_SOG_KN,
   STABLE_SECONDS,
   checkRequirements,
+  orientationOk,
   rateContact,
   starRating,
 } from './evaluation';
+import type { TaskDef } from '../tasks/types';
+import { ORIENTATION_LABEL } from '../tasks/types';
 import { FenderSet } from '../physics/fenders';
 
 export const PHYSICS_DT = 1 / 240;
@@ -39,6 +42,9 @@ export interface ManeuverStatus {
 
 /** Festgehaltenes Ergebnis eines erfolgreichen Anlegers. */
 export interface ManeuverResult {
+  /** Aufgabe (fehlt im freien Training) */
+  taskId?: string;
+  taskTitle?: string;
   scenarioId: string;
   scenarioName: string;
   berthId: string;
@@ -69,6 +75,8 @@ export class Simulation {
   fenders!: FenderSet;
   collisions = new CollisionSystem();
   targetBerthId: string;
+  /** aktive Aufgabe; null = freies Training */
+  task: TaskDef | null = null;
   time = 0;
   paused = false;
   timeScale = 1;
@@ -93,8 +101,33 @@ export class Simulation {
   }
 
   private makeYacht(): Yacht {
-    const s = this.harbor.start;
+    const s = this.task?.start ?? this.harbor.start;
     return new Yacht(this.yachtConfig, s.pos, s.headingDeg, s.speedKn);
+  }
+
+  /** Startzustand der Aufgabe herstellen: vorbelegte Leinen, hängende Fender. */
+  private applyTaskStart(): void {
+    const t = this.task;
+    if (!t) return;
+    for (const [cleat, anchorId] of t.initialLines ?? []) {
+      const anchor = this.harbor.anchors.find((a) => a.id === anchorId);
+      if (anchor) this.lines.attachDirect(this.yacht, cleat, anchor);
+    }
+    for (const side of t.fenders ?? []) this.fenders.setSide(side, true, -10);
+  }
+
+  /** Aufgabe aktivieren (null = freies Training). Setzt das Manöver zurück. */
+  setTask(task: TaskDef | null, harbor: Harbor, cfg?: YachtConfig, env?: EnvironmentSettings): void {
+    this.task = task;
+    this.harbor = harbor;
+    this.collisions.setObstacles(harbor.piles, harbor.solids);
+    this.targetBerthId = task ? task.goal.berth : harbor.defaultTarget;
+    this.reset({ cfg, env });
+  }
+
+  /** Zielzone beim Ablegen (sonst null). */
+  get goalZone(): Vec2[] | null {
+    return this.task?.goal.kind === 'depart' ? this.task.goal.zone : null;
   }
 
   private resetStatus(): void {
@@ -125,11 +158,19 @@ export class Simulation {
     this.log = [];
     this.activeContacts.clear();
     this.resetStatus();
-    this.addLog('Manöver gestartet. Ziel: ' + (this.targetBerth?.label ?? '–'), 'info');
+    this.applyTaskStart();
+    const goal = this.task?.goal;
+    this.addLog(
+      goal?.kind === 'depart'
+        ? `Aufgabe: ${this.task!.title} – ablegen und zur ${goal.zoneLabel}`
+        : `${this.task ? `Aufgabe: ${this.task.title} – ` : 'Manöver gestartet. '}Ziel: ${this.targetBerth?.label ?? '–'}`,
+      'info',
+    );
   }
 
   /** Anderes Szenario laden (setzt das Manöver zurück). */
   setHarbor(harbor: Harbor, targetBerthId = harbor.defaultTarget): void {
+    this.task = null;
     this.harbor = harbor;
     this.collisions.setObstacles(harbor.piles, harbor.solids);
     this.targetBerthId = harbor.berths.some((b) => b.id === targetBerthId && !b.occupied) ? targetBerthId : harbor.defaultTarget;
@@ -208,53 +249,83 @@ export class Simulation {
     this.activeContacts = now;
   }
 
-  /**
-   * Festgemacht, wenn das Boot in der Markierung liegt, alle geforderten
-   * Leinen belegt und stramm sind, die Maschine ausgekuppelt ist und das Boot
-   * STABLE_SECONDS lang ruhig liegt.
-   */
   private evaluate(dt: number): void {
+    if (this.status.completed) return;
+    if (this.task?.goal.kind === 'depart') this.evaluateDepart(this.task.goal.zone, this.task.goal.zoneLabel);
+    else this.evaluateMoor(dt);
+  }
+
+  /** Erfolg festhalten (gemeinsam für Anlegen und Ablegen). */
+  private complete(what: string, berthId: string, berthLabel: string): void {
+    const s = this.status;
+    s.completed = true;
+    s.completedAt = this.time;
+    s.result = {
+      taskId: this.task?.id,
+      taskTitle: this.task?.title,
+      scenarioId: this.harbor.id,
+      scenarioName: this.harbor.name,
+      berthId,
+      berthLabel,
+      yachtName: this.yachtConfig.name,
+      time: this.time,
+      contacts: s.contacts,
+      hardContacts: s.hardContacts,
+      maxImpactKn: s.maxImpactKn,
+      stars: starRating(s.contacts, s.hardContacts),
+      windKn: this.env.settings.windSpeedKn,
+      currentKn: this.env.settings.currentSpeedKn,
+      date: new Date().toISOString(),
+    };
+    s.message = `${what} nach ${formatTime(this.time)} – ${'★'.repeat(s.result.stars)}${'☆'.repeat(3 - s.result.stars)} · Kontakte: ${s.contacts}, harte: ${s.hardContacts}`;
+    this.addLog(s.message, 'good');
+  }
+
+  /** Ablegen: alle Leinen los und Schwerpunkt in der Zielzone. */
+  private evaluateDepart(zone: Vec2[], zoneLabel: string): void {
+    const n = this.lines.lines.length;
+    const inZone = pointInPolygon(this.yacht.state.pos, zone);
+    if (n === 0 && inZone) {
+      this.complete('Abgelegt', this.targetBerthId, zoneLabel);
+      return;
+    }
+    const todo: string[] = [];
+    if (n > 0) todo.push(`${n === 1 ? '1 Leine' : `${n} Leinen`} loswerfen`);
+    if (!inZone) todo.push(`zur ${zoneLabel} fahren`);
+    this.status.message = todo.join(' · ');
+  }
+
+  /**
+   * Festgemacht, wenn das Boot in der Markierung liegt (ggf. mit vorgegebener
+   * Ausrichtung), alle geforderten Leinen belegt und stramm sind, die Maschine
+   * ausgekuppelt ist und das Boot STABLE_SECONDS lang ruhig liegt.
+   */
+  private evaluateMoor(dt: number): void {
     const berth = this.targetBerth;
-    if (!berth || this.status.completed) return;
+    if (!berth) return;
     const y = this.yacht;
     const hull = y.outlineWorld(true);
     const inside = hull.filter((p) => insideWithTolerance(p, berth.poly, 0.4)).length / hull.length;
     // Schwerpunkt in der Markierung und der Rumpf weitgehend darin (Fender dürfen überstehen)
     this.status.inBerth = inside > 0.75 && pointInPolygon(y.state.pos, berth.poly);
+    const orientation = this.task?.goal.kind === 'moor' ? this.task.goal.orientation : undefined;
+    const orientOk = !orientation || orientationOk(orientation, berth, y);
     const reqs = checkRequirements(berth, y, this.lines.lines);
     const linesOk = reqs.every((r) => r.ok >= r.req.count);
     const calm = y.sogKn < STABLE_MAX_SOG_KN && Math.abs((y.state.r * 180) / Math.PI) < STABLE_MAX_ROT_DEG_S;
     const engineOk = y.state.gear === 0;
-    const moored = this.status.inBerth && linesOk && engineOk;
+    const moored = this.status.inBerth && orientOk && linesOk && engineOk;
     this.status.moored = moored;
     this.status.stableFor = moored && calm ? this.status.stableFor + dt : 0;
 
     if (this.status.stableFor >= STABLE_SECONDS) {
-      const s = this.status;
-      s.completed = true;
-      s.completedAt = this.time;
-      s.result = {
-        scenarioId: this.harbor.id,
-        scenarioName: this.harbor.name,
-        berthId: berth.id,
-        berthLabel: berth.label,
-        yachtName: this.yachtConfig.name,
-        time: this.time,
-        contacts: s.contacts,
-        hardContacts: s.hardContacts,
-        maxImpactKn: s.maxImpactKn,
-        stars: starRating(s.contacts, s.hardContacts),
-        windKn: this.env.settings.windSpeedKn,
-        currentKn: this.env.settings.currentSpeedKn,
-        date: new Date().toISOString(),
-      };
-      s.message = `Festgemacht nach ${formatTime(this.time)} – ${'★'.repeat(s.result.stars)}${'☆'.repeat(3 - s.result.stars)} · Kontakte: ${s.contacts}, harte: ${s.hardContacts}`;
-      this.addLog(s.message, 'good');
+      this.complete('Festgemacht', berth.id, berth.label);
       return;
     }
 
     const todo: string[] = [];
     if (!this.status.inBerth) todo.push('Boot in die Markierung bringen');
+    else if (!orientOk) todo.push(`Vorgabe: ${ORIENTATION_LABEL[orientation!]}`);
     for (const r of reqs) {
       const missing = r.req.count - r.ok;
       if (missing <= 0) continue;

@@ -5,7 +5,8 @@
  */
 import type { Berth, LineRequirement, LineRole } from '../harbor/harbor';
 import type { MooringLine } from '../physics/lines';
-import { worldToBody } from '../physics/vec';
+import { dot, worldToBody } from '../physics/vec';
+import type { Orientation } from '../tasks/types';
 import type { Yacht } from '../physics/yacht';
 
 /** Leine gilt als stramm, wenn sie höchstens so viel Lose hat [m]. */
@@ -105,4 +106,26 @@ export function rateContact(via: 'hull' | 'fender', kind: string, approachKn: nu
 export function starRating(contacts: number, hardContacts: number): 1 | 2 | 3 {
   if (hardContacts > 0) return 1;
   return contacts > 0 ? 2 : 3;
+}
+
+/**
+ * Ausrichtungs-Vorgabe erfüllt? Vergleicht Bug- bzw. Steuerbordrichtung mit
+ * der Richtung zum Steg (±45°).
+ */
+export function orientationOk(o: Orientation, berth: Berth, yacht: Yacht): boolean {
+  const psi = yacht.state.psi;
+  const fwd = { x: Math.sin(psi), y: Math.cos(psi) };
+  const stbd = { x: Math.cos(psi), y: -Math.sin(psi) };
+  const d = berth.pierDir;
+  const lim = Math.SQRT1_2;
+  switch (o) {
+    case 'bowToPier':
+      return dot(fwd, d) > lim;
+    case 'sternToPier':
+      return dot(fwd, d) < -lim;
+    case 'starboardSide':
+      return dot(stbd, d) > lim;
+    case 'portSide':
+      return dot(stbd, d) < -lim;
+  }
 }

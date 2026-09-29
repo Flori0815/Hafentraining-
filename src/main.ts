@@ -4,11 +4,14 @@ import { DEFAULT_LINE_SETTINGS, type LineMode, type LineSettings, type ShoreAnch
 import { KN, clamp, worldToBody, type Vec2 } from './physics/vec';
 import { BALL_FENDER, nearestHullPoint, type FenderSide } from './physics/fenders';
 import { IDLE_LEVER, NEUTRAL_ZONE } from './physics/yacht';
-import { SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from './physics/yachtConfig';
+import { PRESETS, SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from './physics/yachtConfig';
 import { Renderer, type Interaction } from './render/renderer';
 import { Simulation, formatTime } from './sim/simulation';
 import { load, save } from './ui/storage';
-import { addResult, bestFor, loadResults } from './ui/results';
+import { addResult, bestFor, bestForTask, loadResults } from './ui/results';
+import { findTask, nextTask } from './tasks/catalog';
+import { DIFFICULTY_LABEL, taskEnv, type TaskDef } from './tasks/types';
+import { TasksDialog, difficultyDots, starsText } from './ui/tasksDialog';
 import { YachtEditor } from './ui/yachtEditor';
 
 // ---------------------------------------------------------------------------
@@ -34,7 +37,24 @@ const sim = new Simulation(harbor, yachtCfg, envSettings, lineSettings);
 if (harbor.berths.some((b) => b.id === savedTarget && !b.occupied)) sim.targetBerthId = savedTarget;
 sim.reset();
 
-document.getElementById('brand-sub')!.textContent = harbor.name;
+// Aktive Aufgabe (null = freies Training)
+let activeTask: TaskDef | null = findTask(load<{ id: string | null }>('task', { id: null }).id) ?? null;
+
+/** Yacht einer Aufgabe: vorgegebene Vorlage oder die eigene Yacht. */
+function taskYacht(t: TaskDef): YachtConfig {
+  const p = t.yacht ? PRESETS.find((x) => x.id === t.yacht) : undefined;
+  return p ? cloneConfig(p) : yachtCfg;
+}
+
+if (activeTask) {
+  harbor = buildScenario(activeTask.harbor);
+  sim.setTask(activeTask, harbor, taskYacht(activeTask), taskEnv(activeTask));
+}
+
+function updateHeader(): void {
+  document.getElementById('brand-sub')!.textContent = activeTask ? `Aufgabe: ${activeTask.title}` : `Freies Training · ${harbor.name}`;
+}
+updateHeader();
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
@@ -450,7 +470,13 @@ function toggleForces(): void {
   $('btn-forces').classList.toggle('on', ia.showForces);
 }
 function restart(): void {
-  sim.reset({ cfg: yachtCfg, env: envSettings });
+  if (activeTask) sim.reset({ cfg: taskYacht(activeTask), env: taskEnv(activeTask) });
+  else sim.reset({ cfg: yachtCfg, env: envSettings });
+  resetUi();
+}
+
+/** Bedienelemente und Anzeigen nach einem (Neu-)Start zurücksetzen. */
+function resetUi(): void {
   setThrottle(0);
   setHelm(0);
   ia.selectedCleat = null;
@@ -458,10 +484,42 @@ function restart(): void {
   setPlacingBall(false);
   bannerShown = false;
   $('banner').hidden = true;
-  $('thruster-box').hidden = !yachtCfg.bowThruster.enabled;
+  $('thruster-box').hidden = !sim.yachtConfig.bowThruster.enabled;
   setFollow(true);
   linesSignature = '';
+  bestSignature = '';
 }
+
+// ---------------------------------------------------------------------------
+// Aufgaben
+// ---------------------------------------------------------------------------
+function startTask(t: TaskDef): void {
+  activeTask = t;
+  harbor = buildScenario(t.harbor);
+  sim.setTask(t, harbor, taskYacht(t), taskEnv(t));
+  save('task', { id: t.id });
+  updateHeader();
+  resetUi();
+  sim.paused = false;
+  $('btn-pause').textContent = '⏸ Pause';
+}
+
+function startFreePlay(): void {
+  activeTask = null;
+  save('task', { id: null });
+  harbor = buildScenario(load<{ id: string }>('scenario', { id: SCENARIOS[0].id }).id);
+  sim.setHarbor(harbor, load<{ id: string }>(targetKey(harbor.id), { id: harbor.defaultTarget }).id);
+  updateHeader();
+  restart();
+}
+
+const tasksDialog = new TasksDialog(startTask, startFreePlay, () => activeTask?.id ?? null);
+$('btn-tasks').addEventListener('click', () => tasksDialog.open());
+$('btn-tasks-panel').addEventListener('click', () => tasksDialog.open());
+$('btn-next-task').addEventListener('click', () => {
+  const n = activeTask && nextTask(activeTask.id);
+  if (n) startTask(n);
+});
 
 $('btn-reset').addEventListener('click', restart);
 $('btn-pause').addEventListener('click', togglePause);
@@ -540,6 +598,7 @@ function readEnvForm(): EnvironmentSettings {
 
 $('btn-env').addEventListener('click', () => {
   fillEnvForm(envSettings);
+  $('env-task-note').hidden = !activeTask;
   dialogHarbor = harbor;
   scenarioSel.value = harbor.id;
   fillTargets(harbor, sim.targetBerthId);
@@ -552,13 +611,12 @@ envForm.addEventListener('submit', (ev) => {
   const f = envForm.elements as unknown as Record<string, HTMLInputElement>;
   lineSettings.throwRange.pile = clamp(Number(f.throwPile.value) || 6, 1, 15);
   lineSettings.throwRange.bollard = clamp(Number(f.throwBollard.value) || 7, 1, 15);
-  if (dialogHarbor.id !== harbor.id) {
-    harbor = dialogHarbor;
-    sim.setHarbor(harbor, targetSel.value);
-    $('brand-sub').textContent = harbor.name;
-  } else {
-    sim.targetBerthId = targetSel.value;
-  }
+  // Übernehmen = freies Training (beendet eine aktive Aufgabe)
+  activeTask = null;
+  save('task', { id: null });
+  harbor = dialogHarbor;
+  sim.setHarbor(harbor, targetSel.value);
+  updateHeader();
   save('env', envSettings);
   save('lines', { throwRange: lineSettings.throwRange });
   save('scenario', { id: harbor.id });
@@ -577,13 +635,32 @@ let bestSignature = '';
 
 /** Bestleistung für den aktuellen Liegeplatz anzeigen. */
 function renderBest(): void {
-  const sig = `${harbor.id}|${sim.targetBerthId}`;
+  const sig = `${activeTask?.id ?? ''}|${harbor.id}|${sim.targetBerthId}`;
   if (sig === bestSignature) return;
   bestSignature = sig;
-  const best = bestFor(loadResults(), harbor.id, sim.targetBerthId);
+  const results = loadResults();
+  const best = activeTask ? bestForTask(results, activeTask.id) : bestFor(results, harbor.id, sim.targetBerthId);
   $('best').textContent = best
-    ? `Bestleistung: ${'★'.repeat(best.stars)}${'☆'.repeat(3 - best.stars)} in ${formatTime(best.time)} (${best.contacts} Kontakte, ${new Date(best.date).toLocaleDateString('de-DE')})`
-    : 'Noch kein Ergebnis für diesen Liegeplatz.';
+    ? `Bestleistung: ${starsText(best.stars)} in ${formatTime(best.time)} (${best.contacts} Kontakte, ${new Date(best.date).toLocaleDateString('de-DE')})`
+    : activeTask
+      ? 'Noch nicht gelöst.'
+      : 'Noch kein Ergebnis für diesen Liegeplatz.';
+}
+
+/** Aufgaben-Kopf im Panel: Titel, Schwierigkeit, Einweisung, „Nächste“. */
+function renderTaskHeader(): void {
+  const t = activeTask;
+  const title = $('task-title');
+  title.hidden = !t;
+  $('task-brief-box').hidden = !t;
+  if (t) {
+    title.innerHTML = `<span class="diff" title="${DIFFICULTY_LABEL[t.difficulty]}">${difficultyDots(t.difficulty)}</span>${escapeHtml(t.title)}`;
+    $('task-brief').textContent = t.briefing;
+  }
+  const goal = t?.goal;
+  $('task-target').textContent =
+    goal?.kind === 'depart' ? `Ziel: ablegen → ${goal.zoneLabel}` : `Ziel: ${sim.targetBerth?.label ?? '–'}`;
+  $('btn-next-task').hidden = !(t && nextTask(t.id));
 }
 const MODE_LABEL: Record<LineMode, string> = { hand: 'Hand', heave: 'Holen', ease: 'Fieren', cleated: 'Belegt' };
 
@@ -701,7 +778,7 @@ function renderPanel(): void {
   $('out-helm').textContent = Math.abs(rdeg) < 0.5 ? 'Ruder mittschiffs' : `Ruder ${Math.abs(rdeg).toFixed(0)}° ${rdeg > 0 ? 'Stb' : 'Bb'}`;
 
   const s = sim.status;
-  $('task-target').textContent = `Ziel: ${sim.targetBerth?.label ?? '–'}`;
+  renderTaskHeader();
   $('task-msg').textContent = s.completed ? '✔ ' + s.message : s.message;
   $('st-time').textContent = formatTime(s.time);
   $('st-contacts').textContent = `${s.contacts} (${s.hardContacts} hart)`;
@@ -711,6 +788,14 @@ function renderPanel(): void {
     const newBest = s.result ? addResult(s.result) : false;
     const b = $('banner');
     b.textContent = '⚓ ' + s.message + (newBest ? ' · Neue Bestleistung!' : '');
+    const next = activeTask && nextTask(activeTask.id);
+    if (next) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = `Nächste: ${next.title} →`;
+      btn.addEventListener('click', () => startTask(next));
+      b.appendChild(btn);
+    }
     b.hidden = false;
     bestSignature = '';
   }

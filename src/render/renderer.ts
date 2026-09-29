@@ -138,7 +138,9 @@ export class Renderer {
     this.drawGrid();
     this.drawCurrent(sim, realDt);
     this.drawWind(sim, realDt);
-    this.drawHarbor(sim.harbor, sim.targetBerthId);
+    // Ablegen: Zielzone statt Liegeplatz markieren
+    this.drawHarbor(sim.harbor, sim.goalZone ? null : sim.targetBerthId);
+    if (sim.goalZone) this.drawGoalZone(sim.goalZone);
     this.drawTrail(sim.trail);
     this.drawWash(sim, realDt);
     this.drawYacht(sim, ia);
@@ -261,7 +263,27 @@ export class Renderer {
     ctx.stroke();
   }
 
-  private drawHarbor(h: Harbor, targetId: string): void {
+  private drawGoalZone(zone: Vec2[]): void {
+    const ctx = this.ctx;
+    this.path(zone);
+    ctx.fillStyle = C.target;
+    ctx.fill();
+    ctx.setLineDash([8, 5]);
+    ctx.strokeStyle = C.targetEdge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const n = zone.length;
+    const c = zone.reduce((a, p) => ({ x: a.x + p.x / n, y: a.y + p.y / n }), { x: 0, y: 0 });
+    const s = this.toScreen(c);
+    ctx.fillStyle = C.targetEdge;
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ZIEL', s.x, s.y);
+  }
+
+  private drawHarbor(h: Harbor, targetId: string | null): void {
     const ctx = this.ctx;
     // Boxen
     for (const b of h.berths) {

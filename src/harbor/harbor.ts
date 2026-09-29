@@ -29,6 +29,8 @@ export interface Berth {
   kind: 'box' | 'alongside';
   /** Markierung des Liegeplatzes */
   poly: Vec2[];
+  /** Einheitsvektor vom Liegeplatz zum Steg (für Ausrichtungs-Vorgaben) */
+  pierDir: Vec2;
   /** nötige Leinen, damit das Boot als festgemacht gilt */
   requirements: LineRequirement[];
   occupied: boolean;
@@ -127,6 +129,7 @@ function addBoxRow(
       label: `Box ${side === 'n' ? 'Nord' : 'Süd'} ${num}`,
       kind: 'box',
       poly: rect(xa, Math.min(pierY, pileY), xb, Math.max(pierY, pileY)),
+      pierDir: { x: 0, y: dir },
       requirements: [
         { role: 'pier', label: 'Leine zum Steg', count: 2, anchors: [pa, pb] },
         { role: 'pile', label: 'Leine zu den Dalben', count: 2, anchors: [`pile-${side}${i}`, `pile-${side}${i + 1}`] },
@@ -208,6 +211,7 @@ function addAlongsideRow(
       id: g.id,
       label: g.label,
       kind: 'alongside',
+      pierDir: { x: 0, y: 1 },
       poly: rect(g.x0, pierY - depth, g.x1, pierY),
       requirements: [req('bowLine', 'Vorleine'), req('sternLine', 'Achterleine'), req('fwdSpring', 'Vorspring'), req('aftSpring', 'Achterspring')],
       occupied: false,

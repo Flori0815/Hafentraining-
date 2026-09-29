@@ -12,6 +12,7 @@
     <header class="topbar">
       <div class="brand">⚓ Hafentraining <span class="sub" id="brand-sub"></span></div>
       <nav class="actions">
+        <button id="btn-tasks" title="Aufgaben auswählen">📋 Aufgaben</button>
         <button id="btn-reset" title="Neustart (R)">↺ Neustart</button>
         <button id="btn-pause" title="Pause (P)">⏸ Pause</button>
         <button id="btn-speed" title="Zeitraffer (T)">1×</button>
@@ -56,8 +57,17 @@
     <aside class="panel">
       <section>
         <h2>Aufgabe</h2>
+        <p id="task-title" class="task-title" hidden></p>
         <p id="task-target" class="target"></p>
+        <details id="task-brief-box" class="task-brief-box" hidden open>
+          <summary>Einweisung</summary>
+          <p id="task-brief"></p>
+        </details>
         <p id="task-msg" class="task-msg"></p>
+        <div class="task-btns">
+          <button type="button" id="btn-tasks-panel">📋 Aufgaben</button>
+          <button type="button" id="btn-next-task" hidden>Nächste Aufgabe →</button>
+        </div>
         <p id="best" class="best"></p>
         <div class="kv small">
           <span>Zeit</span><b id="st-time">0:00</b>
@@ -104,6 +114,21 @@
       </section>
     </aside>
 
+    <dialog id="dlg-tasks" class="wide">
+      <form method="dialog">
+        <div class="tasks-top">
+          <h2>Aufgaben</h2>
+          <span id="task-progress" class="task-progress"></span>
+        </div>
+        <div id="task-filter" class="task-filter"></div>
+        <div id="task-list" class="task-list"></div>
+        <menu>
+          <button type="button" id="btn-free-play" title="Ohne Aufgabe üben: Szenario, Liegeplatz und Bedingungen frei wählen">Freies Training</button>
+          <button value="close" class="primary">Schließen</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="dlg-help">
       <form method="dialog">
         <h2>Bedienung</h2>
@@ -136,6 +161,8 @@
               <li>Ziehen: Karte verschieben · Mausrad/Pinch: Zoom</li>
               <li><kbd>V</kbd> Kamera folgt · <kbd>K</kbd> Kräfte · <kbd>P</kbd> Pause · <kbd>T</kbd> Zeitraffer · <kbd>R</kbd> Neustart</li>
             </ul>
+            <h3>Aufgaben</h3>
+            <p>Unter „📋 Aufgaben“ warten über 20 Aufgaben von ●○○○○ Einsteiger bis ●●●●● Experte – Anlegen und Ablegen, bei Wind, Strömung, rückwärts, längsseits, mit Langkieler. „Freies Training“ lässt Szenario und Bedingungen frei wählen.</p>
             <h3>Ziel</h3>
             <p>Den grün markierten Liegeplatz ansteuern und festmachen. <b>Box:</b> je zwei Leinen an Dalben und Stegklampen. <b>Längsseits:</b> Vorleine, Achterleine, Vorspring und Achterspring. Alle Leinen belegt und stramm (dichtholen!), Maschine in Neutral, Boot 5 s ruhig in der Markierung. Szenario und Liegeplatz unter „Bedingungen“.</p>
             <p>Wertung: ★★★ ohne Kontakt, ★★ mit leichter Berührung, ★ mit hartem Kontakt. Ohne Abzug bleiben Kontakte über einen Fender bis 0,6 kn und Rumpfkontakte mit einer Dalbe bis 0,3 kn; ein Rumpf an Steg oder Boot zählt schon ab 0,1 kn. Die Bestleistung je Liegeplatz wird im Browser gespeichert.</p>
@@ -162,6 +189,7 @@
           <label>Wurfweite Dalbe [m]<input name="throwPile" type="number" min="1" max="15" step="0.5" /></label>
           <label>Wurfweite Stegklampe [m]<input name="throwBollard" type="number" min="1" max="15" step="0.5" /></label>
         </div>
+        <p id="env-task-note" class="hint" hidden>Übernehmen beendet die aktuelle Aufgabe und startet das freie Training.</p>
         <div class="presets">
           <span>Schnellwahl:</span>
           <button type="button" data-env="calm">Flaute</button>
