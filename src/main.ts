@@ -70,6 +70,8 @@ const ia: Interaction = {
   flash: null,
   placingBall: false,
   ballPreview: null,
+  slipMode: false,
+  slipFrom: null,
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -175,6 +177,10 @@ window.addEventListener('keydown', (e) => {
       ia.selectedCleat = null;
       ia.selectedLine = null;
       setPlacingBall(false);
+      setSlipMode(false);
+      break;
+    case 'm':
+      setSlipMode(!ia.slipMode);
       break;
     case 'u':
       toggleFenders('p');
@@ -344,6 +350,10 @@ function handleClick(s: Vec2): void {
     return;
   }
   const p = pick(s);
+  if (p.cleat && ia.slipFrom) {
+    completeSlip(p.cleat);
+    return;
+  }
   if (p.cleat) {
     ia.selectedCleat = ia.selectedCleat === p.cleat ? null : p.cleat;
     return;
@@ -355,10 +365,20 @@ function handleClick(s: Vec2): void {
     }
     const reach = sim.lines.canReach(sim.yacht, ia.selectedCleat, p.anchor);
     const cleatName = sim.yacht.model.cleats.find((c) => c.id === ia.selectedCleat)?.name ?? '';
+    if (!reach.ok && reach.distance <= reach.range) {
+      flash(`Leine zu kurz: ${reach.cleatDistance.toFixed(1)} m ab Klampe (max. ${sim.lines.settings.maxLength} m)`, p.anchor.pos);
+      return;
+    }
     if (!reach.ok) {
       const how = p.anchor.kind === 'ring' ? 'Reichweite' : 'Wurfweite';
       flash(`Zu weit: ${reach.distance.toFixed(1)} m (${how} ${reach.range} m)`, p.anchor.pos);
       sim.addLog(`Wurf von ${cleatName} zu ${p.anchor.label} zu weit (${reach.distance.toFixed(1)} m)`, 'warn');
+      return;
+    }
+    if (ia.slipMode) {
+      // Bucht liegt über dem Festpunkt – jetzt die zweite Klampe für die Holepart
+      ia.slipFrom = { cleat: ia.selectedCleat, anchor: p.anchor };
+      ia.selectedCleat = null;
       return;
     }
     const line = sim.lines.attach(sim.yacht, ia.selectedCleat, p.anchor);
@@ -370,6 +390,34 @@ function handleClick(s: Vec2): void {
     return;
   }
   ia.selectedCleat = null;
+}
+
+const cleatName = (id: string) => sim.yacht.model.cleats.find((c) => c.id === id)?.name ?? id;
+
+function setSlipMode(on: boolean): void {
+  ia.slipMode = on;
+  ia.slipFrom = null;
+  $('btn-slip').classList.toggle('on', on);
+}
+
+/** Manöverleine fertig ausbringen: Holepart auf die zweite Klampe. */
+function completeSlip(workCleat: string): void {
+  const from = ia.slipFrom!;
+  if (workCleat === from.cleat) {
+    flash('Zweite, andere Klampe wählen', from.anchor.pos);
+    return;
+  }
+  const line = sim.lines.attachSlip(sim.yacht, from.cleat, from.anchor, workCleat);
+  if (!line) {
+    flash(`Manöverleine zu kurz (max. ${sim.lines.settings.slipMaxLength} m)`, from.anchor.pos);
+    return;
+  }
+  sim.addLog(
+    `Manöverleine ${line.id}: ${cleatName(from.cleat)} → ${from.anchor.label} → ${cleatName(workCleat)}, Holepart von Hand gehalten`,
+    'info',
+  );
+  ia.selectedLine = line.id;
+  setSlipMode(false);
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +483,7 @@ function lineAction(id: number, act: LineMode | 'release'): void {
   if (!l) return;
   if (act === 'release') {
     sim.lines.release(id);
-    sim.addLog(`Leine ${id} losgeworfen`, 'info');
+    sim.addLog(l.slip ? `Manöverleine ${id} über Slip eingeholt` : `Leine ${id} losgeworfen`, 'info');
     if (ia.selectedLine === id) ia.selectedLine = null;
   } else {
     sim.lines.setMode(id, act);
@@ -482,6 +530,7 @@ function resetUi(): void {
   ia.selectedCleat = null;
   ia.selectedLine = null;
   setPlacingBall(false);
+  setSlipMode(false);
   bannerShown = false;
   $('banner').hidden = true;
   $('thruster-box').hidden = !sim.yachtConfig.bowThruster.enabled;
@@ -692,11 +741,13 @@ function renderLines(): void {
     linesSignature = sig;
     el.innerHTML = sim.lines.lines
       .map((l) => {
-        const cleat = sim.yacht.model.cleats.find((c) => c.id === l.cleatId)?.name ?? l.cleatId;
+        const title = l.slip
+          ? `${l.id} · Manöverleine ${cleatName(l.slip.cleatId)} ⇄ ${l.anchor.label} ⇄ ${cleatName(l.cleatId)}`
+          : `${l.id} · ${cleatName(l.cleatId)} → ${l.anchor.label}`;
         const btn = (mode: LineMode, label: string, key: string) =>
           `<button data-line="${l.id}" data-act="${mode}" class="${l.mode === mode ? 'on' : ''}" title="${label} (${key})">${label}</button>`;
         return `<div class="line-card ${ia.selectedLine === l.id ? 'sel' : ''}" data-card="${l.id}">
-          <div class="head"><b>${l.id} · ${cleat} → ${l.anchor.label}</b><span>${MODE_LABEL[l.mode]}</span></div>
+          <div class="head"><b>${escapeHtml(title)}</b><span>${MODE_LABEL[l.mode]}</span></div>
           <div class="meta" data-meta="${l.id}"></div>
           <div class="tension"><div data-bar="${l.id}"></div></div>
           <div class="btns">${btn('hand', 'Halten', 'G')}${btn('heave', 'Holen', 'H')}${btn('ease', 'Fieren', 'F')}${btn('cleated', 'Belegen', 'B')}
@@ -707,11 +758,23 @@ function renderLines(): void {
   for (const l of sim.lines.lines) {
     const meta = el.querySelector<HTMLElement>(`[data-meta="${l.id}"]`);
     const bar = el.querySelector<HTMLElement>(`[data-bar="${l.id}"]`);
-    if (meta) meta.textContent = `Länge ${l.length.toFixed(1)} m · ${l.slack > 0.05 ? `lose ${l.slack.toFixed(1)} m` : 'steif'} · Zug ${Math.round(l.tension)} N`;
-    if (bar) bar.style.width = `${Math.min(100, (l.tension / 3000) * 100)}%`;
+    const loose = l.slack > 0.05 ? `lose ${l.slack.toFixed(1)} m` : 'steif';
+    if (meta) {
+      meta.textContent = l.slip
+        ? `Länge ${(l.length + l.slip.length).toFixed(1)} m · ${loose} · Holepart ${Math.round(l.tension)} N · feste Part ${Math.round(l.slip.tension)} N`
+        : `Länge ${l.length.toFixed(1)} m · ${loose} · Zug ${Math.round(l.tension)} N`;
+    }
+    const load = Math.max(l.tension, l.slip?.tension ?? 0);
+    if (bar) bar.style.width = `${Math.min(100, (load / 3000) * 100)}%`;
   }
   const hint = $('line-hint');
-  if (ia.selectedCleat) {
+  if (ia.slipFrom) {
+    hint.textContent = `Manöverleine liegt über ${ia.slipFrom.anchor.label} – jetzt die zweite Klampe für die Holepart anklicken.`;
+    hint.classList.add('active');
+  } else if (ia.slipMode && !ia.selectedCleat) {
+    hint.textContent = 'Manöverleine: erste Klampe (feste Part) anklicken, dann Dalbe oder Stegklampe, dann die zweite Klampe.';
+    hint.classList.add('active');
+  } else if (ia.selectedCleat) {
     const name = sim.yacht.model.cleats.find((c) => c.id === ia.selectedCleat)?.name;
     hint.textContent = `${name} gewählt – jetzt Dalbe oder Stegklampe anklicken (grün = in Wurfweite).`;
     hint.classList.add('active');
@@ -722,6 +785,8 @@ function renderLines(): void {
     hint.classList.remove('active');
   }
 }
+
+$('btn-slip').addEventListener('click', () => setSlipMode(!ia.slipMode));
 
 $('lines').addEventListener('click', (e) => {
   const t = e.target as HTMLElement;

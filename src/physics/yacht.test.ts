@@ -207,6 +207,21 @@ describe('Leinen', () => {
     expect(ls.attach(y, 'bow-p', far)).toBeNull();
   });
 
+  it('Wurfweite zählt ab der Bordkante: mit der Leine nach achtern laufen und werfen', () => {
+    const y = new Yacht(SAILING_YACHT_36);
+    const ls = new LineSystem();
+    // Dalbe 5 m achteraus des Hecks, von der Mittelklampe über 10 m entfernt
+    const stern = y.toWorld({ x: Math.min(...y.model.outline.map((p) => p.x)), y: 0 });
+    const a: ShoreAnchor = { id: 'z', kind: 'pile', pos: { x: stern.x, y: stern.y - 5 }, label: '' };
+    const r = ls.canReach(y, 'mid-p', a);
+    expect(r.cleatDistance).toBeGreaterThan(ls.settings.throwRange.pile + 3);
+    expect(r.distance).toBeCloseTo(5, 0);
+    expect(r.ok).toBe(true);
+    const l = ls.attach(y, 'mid-p', a)!;
+    // Leine reicht von der Mittelklampe bis zur Dalbe
+    expect(l.length).toBeGreaterThan(r.cleatDistance);
+  });
+
   it('zwei belegte Heckleinen halten das Boot gegen Motorschub', () => {
     const y = new Yacht(SAILING_YACHT_36);
     const ls = new LineSystem();
@@ -301,5 +316,79 @@ describe('Leinen', () => {
     }
     const d = Math.hypot(y.cleatWorld('mid-p')!.x - a.pos.x, y.cleatWorld('mid-p')!.y - a.pos.y);
     expect(d).toBeLessThan(3);
+  });
+});
+
+describe('Manöverleine (Kraftdreieck)', () => {
+  // Kurs Nord, Steg an Stb (Osten); Poller querab der Mitte
+  const setup = () => {
+    const y = new Yacht(SAILING_YACHT_36);
+    const ls = new LineSystem();
+    const mid = y.cleatWorld('mid-s')!;
+    const a: ShoreAnchor = { id: 'k', kind: 'bollard', pos: { x: mid.x + 3, y: mid.y }, label: 'Poller' };
+    return { y, ls, a };
+  };
+  const sim = (y: Yacht, ls: LineSystem, seconds: number, wind: Vec2 = calm, each?: () => void) => {
+    for (let i = 0; i < 240 * seconds; i++) {
+      const f = ls.update(y, DT);
+      y.step(DT, calm, wind, f);
+      each?.();
+    }
+  };
+
+  it('braucht zwei verschiedene Klampen und Wurfweite zur ersten', () => {
+    const { y, ls, a } = setup();
+    expect(ls.attachSlip(y, 'bow-s', a, 'bow-s')).toBeNull();
+    const far: ShoreAnchor = { ...a, id: 'f', pos: { x: 30, y: 0 } };
+    expect(ls.attachSlip(y, 'bow-s', far, 'stern-s')).toBeNull();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    expect(l).not.toBeNull();
+    expect(l.cleatId).toBe('stern-s');
+    expect(l.slip?.cleatId).toBe('bow-s');
+  });
+
+  it('Dichtholen zieht Bug und Heck gleichmäßig an den Steg, beide Parten tragen', () => {
+    const { y, ls, a } = setup();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    ls.setMode(l.id, 'heave');
+    let maxSkew = 0;
+    sim(y, ls, 40, calm, () => {
+      const line = ls.lines[0];
+      const low = Math.min(line.tension, line.slip!.tension);
+      const allowed = ls.settings.slipBaseResistance + low * (Math.exp(ls.settings.slipFriction * Math.PI) - 1);
+      maxSkew = Math.max(maxSkew, Math.abs(line.tension - line.slip!.tension) - allowed);
+    });
+    const line = ls.lines[0];
+    expect(line.tension).toBeGreaterThan(100);
+    expect(line.slip!.tension).toBeGreaterThan(100);
+    // Zugunterschied bleibt (bis auf Dämpfung) innerhalb der Reibung am Poller
+    expect(maxSkew).toBeLessThan(300);
+    // Boot bleibt etwa parallel zum Steg
+    expect(Math.min(y.headingDeg, 360 - y.headingDeg)).toBeLessThan(15);
+    expect(a.pos.x - y.cleatWorld('mid-s')!.x).toBeLessThan(2.5);
+  });
+
+  it('Leine rutscht um den Festpunkt, wenn das Boot längs verholt', () => {
+    const { y, ls, a } = setup();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    ls.setMode(l.id, 'cleated');
+    const fixed0 = l.slip!.length;
+    const total0 = l.length + l.slip!.length;
+    // langsam voraus: der Bug entfernt sich vom Poller, das Heck nähert sich
+    y.controls.throttle = 0.25;
+    sim(y, ls, 15);
+    const line = ls.lines[0];
+    expect(line.slip!.length).toBeGreaterThan(fixed0 + 0.5);
+    // die Gesamtlänge bleibt bei belegter Holepart erhalten
+    expect(line.length + line.slip!.length).toBeCloseTo(total0, 5);
+  });
+
+  it('wird von Bord über Slip eingeholt – keine Kraft mehr', () => {
+    const { y, ls, a } = setup();
+    const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
+    ls.setMode(l.id, 'cleated');
+    ls.release(l.id);
+    expect(ls.lines).toHaveLength(0);
+    expect(ls.update(y, DT)).toEqual([]);
   });
 });
