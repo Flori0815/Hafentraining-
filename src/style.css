@@ -258,6 +258,41 @@ button.primary {
   font-size: 12px;
   color: var(--accent-2);
 }
+.checklist {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 13px;
+}
+.checklist li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  padding: 2px 0;
+}
+.checklist .mark {
+  width: 1.1em;
+  text-align: center;
+  font-weight: 700;
+}
+.checklist li.done {
+  color: var(--good);
+}
+.checklist li.open .mark {
+  color: var(--muted);
+}
+.checklist .lbl {
+  flex: 1;
+}
+.checklist .extra {
+  font-size: 11px;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+.checklist li.done .extra {
+  color: var(--good);
+}
 .task-msg {
   margin: 0 0 8px;
   font-size: 13px;
@@ -614,6 +649,12 @@ dialog.wide {
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 10px;
+}
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
 }
 .task-filter button {
   font-size: 12px;

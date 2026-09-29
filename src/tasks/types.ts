@@ -52,6 +52,12 @@ export interface TaskDef {
   env?: Partial<EnvironmentSettings>;
   /** abweichende Startlage (Standard: Start des Hafens) */
   start?: { pos: Vec2; headingDeg: number; speedKn: number };
+  /**
+   * Boot startet festgemacht im Ziel-Liegeplatz (für Ablegen): Lage und
+   * Leinen berechnet die Simulation passend zur Yacht; längsseits hängen die
+   * Fender auf der Stegseite. Alternative zu `start` + `initialLines`.
+   */
+  startMoored?: Orientation;
   /** Leinen, die zu Beginn belegt sind: [Klampe an Bord, Festpunkt-ID] */
   initialLines?: [string, string][];
   /** Fender, die zu Beginn schon hängen */

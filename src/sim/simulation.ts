@@ -20,6 +20,7 @@ import {
   starRating,
 } from './evaluation';
 import type { TaskDef } from '../tasks/types';
+import { mooringPlan, pierSide, placeMoored } from './mooring';
 import { ORIENTATION_LABEL } from '../tasks/types';
 import { FenderSet } from '../physics/fenders';
 
@@ -36,8 +37,19 @@ export interface ManeuverStatus {
   completedAt: number | null;
   /** wie lange das Boot bereits ruhig und vollständig festgemacht liegt [s] */
   stableFor: number;
+  /** Erfolgskriterien der Aufgabe mit aktuellem Stand */
+  checklist: ChecklistItem[];
   message: string;
   result: ManeuverResult | null;
+}
+
+export interface ChecklistItem {
+  label: string;
+  done: boolean;
+  /** Fortschritt, z. B. "1/2" oder "3/5 s" */
+  progress?: string;
+  /** Hinweis, was zu tun ist */
+  hint?: string;
 }
 
 /** Festgehaltenes Ergebnis eines erfolgreichen Anlegers. */
@@ -109,7 +121,14 @@ export class Simulation {
   private applyTaskStart(): void {
     const t = this.task;
     if (!t) return;
-    for (const [cleat, anchorId] of t.initialLines ?? []) {
+    const berth = this.targetBerth;
+    const plan: [string, string][] = [...(t.initialLines ?? [])];
+    if (t.startMoored && berth) {
+      placeMoored(this.yacht, berth, t.startMoored);
+      plan.push(...mooringPlan(this.yacht, this.harbor, berth, t.startMoored));
+      if (berth.kind === 'alongside') this.fenders.setSide(pierSide(t.startMoored), true, -10);
+    }
+    for (const [cleat, anchorId] of plan) {
       const anchor = this.harbor.anchors.find((a) => a.id === anchorId);
       if (anchor) this.lines.attachDirect(this.yacht, cleat, anchor);
     }
@@ -141,6 +160,7 @@ export class Simulation {
       completed: false,
       completedAt: null,
       stableFor: 0,
+      checklist: [],
       message: '',
       result: null,
     };
@@ -285,6 +305,10 @@ export class Simulation {
   private evaluateDepart(zone: Vec2[], zoneLabel: string): void {
     const n = this.lines.lines.length;
     const inZone = pointInPolygon(this.yacht.state.pos, zone);
+    this.status.checklist = [
+      { label: 'Alle Leinen los', done: n === 0, progress: n ? `${n} noch fest` : undefined, hint: n ? 'Leine wählen → Los (L)' : undefined },
+      { label: `Zielzone: ${zoneLabel}`, done: inZone },
+    ];
     if (n === 0 && inZone) {
       this.complete('Abgelegt', this.targetBerthId, zoneLabel);
       return;
@@ -317,6 +341,26 @@ export class Simulation {
     const moored = this.status.inBerth && orientOk && linesOk && engineOk;
     this.status.moored = moored;
     this.status.stableFor = moored && calm ? this.status.stableFor + dt : 0;
+
+    const list: ChecklistItem[] = [{ label: 'Boot in der Markierung', done: this.status.inBerth }];
+    if (orientation) list.push({ label: ORIENTATION_LABEL[orientation], done: this.status.inBerth && orientOk });
+    for (const r of reqs) {
+      const done = r.ok >= r.req.count;
+      list.push({
+        label: `${r.req.label} belegt & stramm`,
+        done,
+        progress: r.req.count > 1 || !done ? `${Math.min(r.ok, r.req.count)}/${r.req.count}` : undefined,
+        hint: done ? undefined : r.slack.length ? `hängt durch – dichtholen` : r.notCleated ? 'noch nicht belegt' : undefined,
+      });
+    }
+    list.push({ label: 'Maschine ausgekuppelt', done: engineOk });
+    list.push({
+      label: `${STABLE_SECONDS} s ruhig liegen`,
+      done: this.status.stableFor >= STABLE_SECONDS,
+      progress: moored ? `${Math.floor(this.status.stableFor)}/${STABLE_SECONDS} s` : undefined,
+      hint: moored && !calm ? 'Boot kommt noch nicht zur Ruhe' : undefined,
+    });
+    this.status.checklist = list;
 
     if (this.status.stableFor >= STABLE_SECONDS) {
       this.complete('Festgemacht', berth.id, berth.label);

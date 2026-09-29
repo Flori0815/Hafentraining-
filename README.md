@@ -87,11 +87,15 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 Maus/Touch: Ziehen verschiebt die Karte, Mausrad/Pinch zoomt. Gashebel und
 Ruder gibt es auch als Schieberegler (mobil bedienbar).
 
-**Aufgaben** (Dialog „📋 Aufgaben“): 22 Aufgaben in fünf Schwierigkeitsstufen
-(●○○○○ Einsteiger … ●●●●● Experte), Anlegen und Ablegen, mit Wind, Böen,
+**Aufgaben** (Dialog „📋 Aufgaben“): 38 Aufgaben – je 19 zum Anlegen und
+Ablegen – in fünf Schwierigkeitsstufen (●○○○○ Einsteiger … ●●●●● Experte),
+filterbar nach Art und Stufe, mit Wind, Böen,
 Strömung, Ausrichtungs-Vorgaben (rückwärts in die Box, Steuerbord längsseits)
 und Langkieler. Jede Aufgabe hat eine Einweisung; Bestleistung und Fortschritt
-werden gespeichert, „Nächste Aufgabe“ führt durch die Lernreihenfolge.
+werden gespeichert, „Nächste Aufgabe“ führt durch die Lernreihenfolge. Eine
+**Checkliste** im Panel zeigt jederzeit, welche Erfolgskriterien erfüllt sind
+und was noch fehlt (z. B. „Vorspring belegt & stramm 0/1 – hängt durch“,
+„5 s ruhig liegen 3/5 s“).
 „Freies Training“ lässt Szenario, Liegeplatz und Bedingungen frei wählen.
 
 **Szenarien** (Häfen):
@@ -138,6 +142,7 @@ src/
   harbor/harbor.ts  Häfen als Daten, aus Bausteinen (Boxenreihe, Längsseits-Steg); SCENARIOS
   sim/simulation.ts Fester Zeitschritt, Kontakte, Ergebnis, Logbuch
   sim/evaluation.ts Leinen-Rollen, Anforderungen je Liegeplatz, Sterne
+  sim/mooring.ts    "Musterskipper": festgemachte Lage und Leinen je Liegeplatz
   render/renderer.ts Canvas-Draufsicht
   tasks/            Aufgaben: Format (types.ts), Katalog (catalog.ts), Katalog-Prüfung (tasks.test.ts)
   ui/               Aufgaben-Dialog, Yacht-Editor, Ergebnisse/Bestleistungen, Persistenz
@@ -167,9 +172,13 @@ mit einer Zeile ergänzt.
 }
 ```
 
-Optional: `start` (Startlage), `initialLines` (belegte Leinen zu Beginn,
-z. B. für Ablegen), `fenders` (hängen schon), `yacht` (Vorlage, z. B.
-`'sy36-long'`). Ablegen: `goal: { kind: 'depart', berth, zone, zoneLabel }`.
+Ablegen: `goal: { kind: 'depart', berth, zone, zoneLabel }` plus
+`startMoored: 'bowToPier' | 'sternToPier' | 'portSide' | 'starboardSide'` –
+Lage und Leinen im Liegeplatz berechnet die Simulation passend zur jeweiligen
+Yacht (auch zu eigenen Yachten), längsseits hängen die Fender schon.
+
+Optional: `start` (Startlage), `initialLines` (belegte Leinen zu Beginn),
+`fenders` (hängen schon), `yacht` (Vorlage, z. B. `'sy36-long'`).
 `npm test` prüft jede Aufgabe automatisch: gültige Daten, kollisionsfreier
 Start und grundsätzliche Lösbarkeit (ein Musterskipper legt korrekt an bzw.
 ab). Eine fehlerhafte Aufgabe fällt sofort auf.

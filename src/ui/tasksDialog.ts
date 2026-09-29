@@ -39,6 +39,7 @@ export class TasksDialog {
   private filterEl: HTMLElement;
   private progressEl: HTMLElement;
   private filter: Difficulty | 0 = 0;
+  private kind: 'all' | 'moor' | 'depart' = 'all';
   private onStart: (t: TaskDef) => void;
   private activeId: () => string | null;
 
@@ -50,6 +51,12 @@ export class TasksDialog {
     this.onStart = onStart;
     this.activeId = activeId;
     this.filterEl.addEventListener('click', (e) => {
+      const k = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-kind]');
+      if (k) {
+        this.kind = k.dataset.kind as 'all' | 'moor' | 'depart';
+        this.render();
+        return;
+      }
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-diff]');
       if (!b) return;
       this.filter = Number(b.dataset.diff) as Difficulty | 0;
@@ -83,15 +90,21 @@ export class TasksDialog {
     const stars = all.reduce((s, t) => s + (best.get(t.id)?.stars ?? 0), 0);
     this.progressEl.textContent = `${solved}/${all.length} gelöst · ${stars}/${all.length * 3} ★`;
 
-    const counts = (d: Difficulty) => all.filter((t) => t.difficulty === d).length;
+    const ofKind = this.kind === 'all' ? all : all.filter((t) => t.goal.kind === this.kind);
+    const counts = (d: Difficulty) => ofKind.filter((t) => t.difficulty === d).length;
     const chip = (d: Difficulty | 0, label: string) =>
       `<button type="button" data-diff="${d}" class="${this.filter === d ? 'on' : ''}">${label}</button>`;
+    const kindChip = (k: 'all' | 'moor' | 'depart', label: string, n: number) =>
+      `<button type="button" data-kind="${k}" class="${this.kind === k ? 'on' : ''}">${label} (${n})</button>`;
+    const nKind = (k: 'moor' | 'depart') => all.filter((t) => t.goal.kind === k).length;
     this.filterEl.innerHTML =
-      chip(0, `Alle (${all.length})`) +
-      ([1, 2, 3, 4, 5] as Difficulty[]).map((d) => chip(d, `${difficultyDots(d)} ${DIFFICULTY_LABEL[d]} (${counts(d)})`)).join('');
+      `<div class="filter-row">${kindChip('all', 'Alle Arten', all.length)}${kindChip('moor', '⚓ Anlegen', nKind('moor'))}${kindChip('depart', '⛵ Ablegen', nKind('depart'))}</div>` +
+      `<div class="filter-row">${chip(0, `Alle Stufen (${ofKind.length})`)}${([1, 2, 3, 4, 5] as Difficulty[])
+        .map((d) => chip(d, `${difficultyDots(d)} ${DIFFICULTY_LABEL[d]} (${counts(d)})`))
+        .join('')}</div>`;
 
     const active = this.activeId();
-    const shown = this.filter ? all.filter((t) => t.difficulty === this.filter) : all;
+    const shown = this.filter ? ofKind.filter((t) => t.difficulty === this.filter) : ofKind;
     this.listEl.innerHTML = shown
       .map((t) => {
         const b = best.get(t.id);
@@ -102,7 +115,7 @@ export class TasksDialog {
         return `<div class="task-card d${t.difficulty} ${t.id === active ? 'active' : ''}">
           <div class="task-head">
             <span class="diff" title="${DIFFICULTY_LABEL[t.difficulty]}">${difficultyDots(t.difficulty)}</span>
-            <b>${esc(t.title)}</b>
+            <b>${t.goal.kind === 'depart' ? '⛵ ' : '⚓ '}${esc(t.title)}</b>
             ${result}
           </div>
           <div class="task-sum">${esc(taskSummary(t))}</div>

@@ -17,29 +17,6 @@ import { zoneRect } from './types';
 const EXIT_BOXENGASSE = zoneRect(-42, -35, -25, -16);
 const EXIT_LAENGSSEITS = zoneRect(-42, -22, -25, -6);
 
-/** Festgemacht in Box Nord 10, Bug zum Steg */
-const MOORED_BOX_N10 = {
-  start: { pos: { x: 39.9, y: -6.7 }, headingDeg: 0, speedKn: 0 },
-  initialLines: [
-    ['bow-p', 'cleat-n10a'],
-    ['bow-s', 'cleat-n10b'],
-    ['stern-p', 'pile-n9'],
-    ['stern-s', 'pile-n10'],
-  ] as [string, string][],
-};
-
-/** Festgemacht längsseits in Lücke A, Backbord zum Steg, Fender Bb draußen */
-const MOORED_GAP_A = {
-  start: { pos: { x: 29, y: -2.05 }, headingDeg: 90, speedKn: 0 },
-  initialLines: [
-    ['bow-p', 'bollard-14'], // Vorleine
-    ['stern-p', 'bollard-10'], // Achterleine
-    ['mid-p', 'bollard-11'], // Vorspring
-    ['stern-p', 'bollard-12'], // Achterspring
-  ] as [string, string][],
-  fenders: ['p'] as ('p' | 's')[],
-};
-
 export const TASKS: TaskDef[] = [
   // ------------------------------------------------------------ 1 Einsteiger
   {
@@ -100,7 +77,7 @@ export const TASKS: TaskDef[] = [
     harbor: 'boxengasse',
     goal: { kind: 'depart', berth: 'box-n10', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
     env: { windSpeedKn: 6, windFromDeg: 200, gustiness: 0.15, windShiftDeg: 8 },
-    ...MOORED_BOX_N10,
+    startMoored: 'bowToPier',
     briefing: 'Bugleinen los, Heckleinen auf Slip halten und beim Rückwärtsfahren fieren. Radeffekt einplanen: rückwärts zieht das Heck nach Backbord. Dann zur Hafenausfahrt im Westen.',
     tags: ['Box', 'Ablegen'],
   },
@@ -174,7 +151,7 @@ export const TASKS: TaskDef[] = [
     harbor: 'laengsseits',
     goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
     env: { windSpeedKn: 14, windFromDeg: 180, gustiness: 0.3, windShiftDeg: 8 },
-    ...MOORED_GAP_A,
+    startMoored: 'portSide',
     briefing:
       'Auflandiger Wind drückt dich an den Steg. Alle Leinen außer der Vorspring los, Ruder zum Steg, langsam voraus eindampfen: das Heck schwenkt ab. Dann rückwärts frei und zur Ausfahrt. Ballfender am Bug hilft.',
     tags: ['Längsseits', 'Ablegen', 'Eindampfen'],
@@ -227,7 +204,7 @@ export const TASKS: TaskDef[] = [
     harbor: 'boxengasse',
     goal: { kind: 'depart', berth: 'box-n10', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
     env: { windSpeedKn: 16, windFromDeg: 270, gustiness: 0.3, windShiftDeg: 10 },
-    ...MOORED_BOX_N10,
+    startMoored: 'bowToPier',
     briefing: 'Seitenwind drückt dich beim Rausfahren auf die Lee-Dalbe. Luv-Heckleine zuletzt los und damit das Heck führen, zügig rückwärts raus.',
     tags: ['Box', 'Ablegen', 'Wind'],
   },
@@ -272,6 +249,185 @@ export const TASKS: TaskDef[] = [
     yacht: 'sy36-long',
     briefing: 'Träger Langkieler, 14 m Lücke, Strömung gegenan und auflandige Böen. Gegen den Strom anlegen, Radeffekt beim Aufstoppen einplanen.',
     tags: ['Längsseits', 'Langkiel', 'Strömung'],
+  },
+  // ================================================================ Ablegen
+  // Boot startet festgemacht (startMoored); Lage und Leinen berechnet die
+  // Simulation passend zur Yacht.
+  {
+    id: 'ablegen-heck-flaute',
+    title: 'Vorwärts aus der Box (Heck am Steg)',
+    difficulty: 1,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n12', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'sternToPier',
+    briefing: 'Du liegst mit dem Heck zum Steg – einfach vorwärts raus. Heckleinen los, Bugleinen an den Dalben zuletzt, dann langsam voraus und in der Gasse nach Westen drehen.',
+    tags: ['Box', 'Ablegen', 'Grundlagen'],
+  },
+  {
+    id: 'ablegen-box-flaute',
+    title: 'Rückwärts aus der Box bei Flaute',
+    difficulty: 1,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n10', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    briefing: 'Bugleinen los, dann rückwärts. Die Heckleinen an den Dalben erst loswerfen, wenn das Heck frei zwischen den Dalben ist. Radeffekt: das Heck zieht nach Backbord.',
+    tags: ['Box', 'Ablegen', 'Radeffekt'],
+  },
+  {
+    id: 'ablegen-laengsseits-flaute',
+    title: 'Ablegen längsseits bei Flaute',
+    difficulty: 1,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    briefing: 'Ohne Wind: Springs und Achterleine los, Vorleine zuletzt. Bug mit wenig Ruder vom Steg wegführen, das Heck nicht an den Steg drücken.',
+    tags: ['Längsseits', 'Ablegen', 'Grundlagen'],
+  },
+  {
+    id: 'ablegen-box-gegenwind',
+    title: 'Ablegen mit Wind von vorn',
+    difficulty: 2,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n7', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 8, windFromDeg: 0, gustiness: 0.2, windShiftDeg: 8 },
+    briefing: 'Der Wind kommt vom Steg und schiebt dich rückwärts raus – gut dosieren, damit du nicht zu schnell auf die gegenüberliegenden Dalben treibst.',
+    tags: ['Box', 'Ablegen', 'Wind'],
+  },
+  {
+    id: 'ablegen-laengsseits-ablandig',
+    title: 'Ablegen bei ablandigem Wind',
+    difficulty: 2,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    env: { windSpeedKn: 10, windFromDeg: 0, gustiness: 0.2, windShiftDeg: 8 },
+    briefing: 'Der Wind drückt dich vom Steg weg – das hilft. Alle Leinen zügig los, vertreiben lassen und dann voraus. Auf die Nachbarboote vorn und achtern achten.',
+    tags: ['Längsseits', 'Ablegen', 'Wind'],
+  },
+  {
+    id: 'ablegen-sued-box',
+    title: 'Ablegen aus einer Süd-Box',
+    difficulty: 2,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-s8', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 6, windFromDeg: 90, gustiness: 0.15, windShiftDeg: 8 },
+    briefing: 'Rückwärts nach Norden in die Gasse. Der Radeffekt zieht das Heck nach Backbord – hier Richtung Westen, also Richtung Ausfahrt. Nutze ihn.',
+    tags: ['Box', 'Ablegen', 'Radeffekt'],
+  },
+  {
+    id: 'ablegen-box-strom',
+    title: 'Ablegen mit leichter Strömung',
+    difficulty: 2,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n16', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { currentSpeedKn: 0.4, currentTowardDeg: 90, windSpeedKn: 4, windFromDeg: 200 },
+    briefing: 'Die Strömung setzt die Gasse entlang nach Osten. Beim Rausfahren versetzt sie dich – Richtung Ausfahrt musst du gegen den Strom.',
+    tags: ['Box', 'Ablegen', 'Strömung'],
+  },
+  {
+    id: 'ablegen-enge-box',
+    title: 'Ablegen aus der engen Box am Eingang',
+    difficulty: 3,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n3', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 8, windFromDeg: 250, gustiness: 0.25, windShiftDeg: 10 },
+    briefing: 'Wenig Platz zu den Nachbarn und gleich die Ausfahrt. Gerade rückwärts raus, erst drehen wenn der Bug die Dalben passiert hat.',
+    tags: ['Box', 'Ablegen', 'Präzision'],
+  },
+  {
+    id: 'ablegen-laengsseits-stb',
+    title: 'Ablegen Steuerbord längsseits',
+    difficulty: 3,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'starboardSide',
+    env: { windSpeedKn: 8, windFromDeg: 200, gustiness: 0.2, windShiftDeg: 8 },
+    briefing: 'Du liegst mit Steuerbord am Steg, Bug nach Westen – Richtung Ausfahrt. Leicht auflandiger Wind: Heck zuerst abdrücken lassen (Eindampfen in die Vorspring), dann voraus.',
+    tags: ['Längsseits', 'Ablegen', 'Eindampfen'],
+  },
+  {
+    id: 'ablegen-heck-gegenwind',
+    title: 'Vorwärts aus der Box gegen den Wind',
+    difficulty: 3,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n10', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'sternToPier',
+    env: { windSpeedKn: 12, windFromDeg: 180, gustiness: 0.25, windShiftDeg: 10 },
+    briefing: 'Heck am Steg, der Wind bläst in die Box. Mit Druck vorwärts raus, Bugleinen an den Dalben erst im Vorbeifahren los – sonst drückt dich der Wind zurück an den Steg.',
+    tags: ['Box', 'Ablegen', 'Wind'],
+  },
+  {
+    id: 'ablegen-luecke-b',
+    title: 'Ablegen aus Lücke B',
+    difficulty: 3,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-b', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    env: { windSpeedKn: 8, windFromDeg: 220, gustiness: 0.2, windShiftDeg: 8 },
+    briefing: 'Nur 14 m Lücke: vorn und achtern liegen Nachbarn dicht dran. Erst Abstand vom Steg gewinnen, dann gerade raus – Ballfender an die gefährdete Ecke.',
+    tags: ['Längsseits', 'Ablegen', 'Präzision'],
+  },
+  {
+    id: 'ablegen-achterspring',
+    title: 'Ablegen: Eindampfen in die Achterspring',
+    difficulty: 4,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-b', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    env: { windSpeedKn: 14, windFromDeg: 180, gustiness: 0.3, windShiftDeg: 8 },
+    briefing:
+      'Auflandig 14 kn, vorn kaum Platz. Alle Leinen außer der Achterspring los, Ballfender ans Heck, Ruder vom Steg weg und rückwärts eindampfen: der Bug schwenkt ab. Dann voraus raus.',
+    tags: ['Längsseits', 'Ablegen', 'Eindampfen'],
+  },
+  {
+    id: 'ablegen-langkieler-box',
+    title: 'Langkieler aus der Box',
+    difficulty: 4,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-n7', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 10, windFromDeg: 240, gustiness: 0.2, windShiftDeg: 8 },
+    yacht: 'sy36-long',
+    briefing: 'Langkieler rückwärts: kaum Steuerwirkung, kräftiger Radeffekt. Mit kurzen Gasstößen arbeiten und das Heck mit der Luv-Dalbenleine führen.',
+    tags: ['Box', 'Ablegen', 'Langkiel'],
+  },
+  {
+    id: 'ablegen-strom-laengsseits',
+    title: 'Ablegen längsseits mit Strom von vorn',
+    difficulty: 4,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    env: { currentSpeedKn: 1, currentTowardDeg: 270, windSpeedKn: 6, windFromDeg: 200, gustiness: 0.15 },
+    briefing: 'Die Strömung setzt mit 1 kn von vorn. Vorspring zuletzt los – die Strömung drückt dann den Bug vom Steg. Aber Achtung: Richtung Ausfahrt geht es mit dem Strom.',
+    tags: ['Längsseits', 'Ablegen', 'Strömung'],
+  },
+  {
+    id: 'ablegen-sturm-box',
+    title: 'Sturmböen – raus aus Box Süd',
+    difficulty: 5,
+    harbor: 'boxengasse',
+    goal: { kind: 'depart', berth: 'box-s13', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 25, windFromDeg: 240, gustiness: 0.5, windShiftDeg: 12, currentSpeedKn: 0.5, currentTowardDeg: 60 },
+    briefing: '25 kn mit Böen und Strömung. Luv-Leinen zuletzt los, in einer Böenlücke zügig rückwärts raus und sofort Fahrt aufnehmen – sonst treibt es dich auf die Dalben.',
+    tags: ['Box', 'Ablegen', 'Starkwind'],
+  },
+  {
+    id: 'ablegen-langkieler-luecke-b',
+    title: 'Langkieler aus Lücke B bei auflandigem Wind',
+    difficulty: 5,
+    harbor: 'laengsseits',
+    goal: { kind: 'depart', berth: 'gap-b', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    env: { windSpeedKn: 16, windFromDeg: 200, gustiness: 0.4, windShiftDeg: 10, currentSpeedKn: 0.6, currentTowardDeg: 270 },
+    yacht: 'sy36-long',
+    briefing: 'Träger Langkieler, 14 m Lücke, auflandige Böen und Strömung. Eindampfen in eine Spring ist Pflicht – Fender und Ballfender an die Kontaktpunkte.',
+    tags: ['Längsseits', 'Ablegen', 'Langkiel'],
   },
 ];
 
