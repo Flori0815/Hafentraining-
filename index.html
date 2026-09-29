@@ -13,6 +13,7 @@
       <div class="brand">⚓ Hafentraining <span class="sub" id="brand-sub"></span></div>
       <nav class="actions">
         <button id="btn-tasks" title="Aufgaben auswählen">📋 Aufgaben</button>
+        <button id="btn-crew" title="Besatzung: Mannschaft oder Einhand (Neustart)">👥 Mannschaft</button>
         <button id="btn-reset" title="Neustart (R)">↺ Neustart</button>
         <button id="btn-pause" title="Pause (P)">⏸ Pause</button>
         <button id="btn-speed" title="Zeitraffer (T)">1×</button>
@@ -47,6 +48,11 @@
             <button id="btn-bt-p" title="Bugstrahlruder: Bug nach Bb (Q)">⟵ Bug</button>
             <span>Bugstrahl</span>
             <button id="btn-bt-s" title="Bugstrahlruder: Bug nach Stb (E)">Bug ⟶</button>
+          </div>
+          <div class="slip-steer" id="slip-steer" hidden>
+            <output id="out-steer">Manöverleinen halten</output>
+            <input id="ctl-steer" type="range" min="-100" max="100" step="1" value="0" aria-label="Lenken mit den Manöverleinen" />
+            <div class="wheel-lbl"><span id="steer-l">◀ fieren</span><button id="btn-steer-hold" title="Beide Manöverleinen halten (,/. lenken)">halten</button><span id="steer-r">fieren ▶</span></div>
           </div>
         </div>
       </div>
@@ -90,6 +96,14 @@
           <span>Wind scheinbar</span><b id="in-aw">–</b>
         </div>
         <div class="rudder-gauge" aria-hidden="true"><div id="in-rudder-bar"></div><span class="mid"></span></div>
+      </section>
+
+      <section>
+        <h2>Besatzung</h2>
+        <p class="hint" id="crew-state"></p>
+        <div class="fender-btns">
+          <button type="button" id="btn-helm-return" title="Einhand: Skipper geht zurück ans Ruder, gehaltene Leine wird belegt (Z)">Zurück ans Ruder</button>
+        </div>
       </section>
 
       <section>
@@ -152,7 +166,13 @@
               <li><kbd>1</kbd>…<kbd>9</kbd> Leine wählen</li>
               <li><kbd>G</kbd> von Hand halten · <kbd>H</kbd> dichtholen · <kbd>F</kbd> fieren · <kbd>B</kbd> belegen · <kbd>L</kbd> loswerfen</li>
               <li><kbd>M</kbd> Manöverleine (Kraftdreieck): erste Klampe → Dalbe/Stegklampe → zweite Klampe. Die Leine rutscht am Festpunkt mit etwas Reibung durch; gearbeitet wird an der Holepart (zweite Klampe). „Los“ holt sie über Slip von Bord ein – ideal zum Ablegen ohne Helfer an Land. Zählt nicht als Festmacher.</li>
+              <li>Manöverleine „→ Cockpit“: Holepart nach achtern führen. Liegen beide Manöverleinen im Cockpit, erscheint ein Regler: dosiert fieren und so lenken (<kbd>,</kbd>/<kbd>.</kbd>).</li>
               <li><kbd>Esc</kbd> Auswahl aufheben</li>
+            </ul>
+            <h3>Besatzung</h3>
+            <ul>
+              <li><b>Mannschaft:</b> die Crew führt Befehle sofort aus, der Skipper bleibt am Ruder.</li>
+              <li><b>Einhand:</b> der Skipper läuft selbst zur Klampe (Bug weit, Heck nah), wirft, belegt und kommt zurück. Solange er nicht am Ruder ist, bleiben Gas und Ruder stehen. <kbd>Z</kbd> zurück ans Ruder.</li>
             </ul>
             <h3>Fender</h3>
             <ul>

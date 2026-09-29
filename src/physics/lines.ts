@@ -97,7 +97,12 @@ export interface MooringLine {
    * arbeitet; `slack` ist die Lose der ganzen Leine.
    */
   slip?: SlipLeg;
+  /** Manöverleine: Holepart an Deck nach achtern ins Cockpit geführt (Bedienung vom Ruder aus) */
+  cockpit?: boolean;
 }
+
+/** Ausrüstung: so viele Manöverleinen sind an Bord */
+export const MAX_SLIP_LINES = 2;
 
 /** Kürzeste Wurfdistanz von der Bordkante (Deckskontur) zu einem Punkt [m]. */
 export function throwDistance(yacht: Yacht, target: Vec2): number {
@@ -107,7 +112,7 @@ export function throwDistance(yacht: Yacht, target: Vec2): number {
   return nearestHullPoint(yacht.model.outline, body).dist;
 }
 
-export const isSlip =(l: MooringLine): l is MooringLine & { slip: SlipLeg } => !!l.slip;
+export const isSlip = (l: MooringLine): l is MooringLine & { slip: SlipLeg } => !!l.slip;
 
 /**
  * Leine rutscht durch (Hände, Klampe), sobald der Zug `limit` übersteigt:
@@ -124,6 +129,12 @@ export class LineSystem {
   settings: LineSettings;
   private nextId = 1;
   events: string[] = [];
+  /**
+   * Lenken mit zwei ins Cockpit geführten Manöverleinen: −1 … 1. Negativ
+   * fiert die linke (weiter backbord festgemachte), positiv die rechte Leine,
+   * je weiter, desto schneller und mit weniger Bremskraft.
+   */
+  steer = 0;
 
   constructor(settings: LineSettings = DEFAULT_LINE_SETTINGS) {
     this.settings = settings;
@@ -196,7 +207,7 @@ export class LineSystem {
    * Part ist belegt, an der Holepart arbeitet die Crew.
    */
   attachSlip(yacht: Yacht, fixedCleatId: string, anchor: ShoreAnchor, workCleatId: string): MooringLine | null {
-    if (fixedCleatId === workCleatId) return null;
+    if (fixedCleatId === workCleatId || this.slipCount >= MAX_SLIP_LINES) return null;
     const reach = this.canReach(yacht, fixedCleatId, anchor);
     const w = yacht.cleatWorld(workCleatId);
     if (!reach.ok || !w) return null;
@@ -218,6 +229,23 @@ export class LineSystem {
     return line;
   }
 
+  get slipCount(): number {
+    return this.lines.filter((l) => l.slip).length;
+  }
+
+  /**
+   * Die beiden ins Cockpit geführten Manöverleinen, sortiert von links nach
+   * rechts (Lage des Festpunkts querab vom Boot aus gesehen), sonst null.
+   */
+  cockpitPair(yacht: Yacht): [MooringLine, MooringLine] | null {
+    const ls = this.lines.filter((l) => l.slip && l.cockpit);
+    if (ls.length !== 2) return null;
+    const st = yacht.state;
+    const side = (l: MooringLine) => worldToBody({ x: l.anchor.pos.x - st.pos.x, y: l.anchor.pos.y - st.pos.y }, st.psi).y;
+    const [a, b] = ls;
+    return side(a) <= side(b) ? [a, b] : [b, a];
+  }
+
   release(id: number): void {
     this.lines = this.lines.filter((l) => l.id !== id);
   }
@@ -229,6 +257,7 @@ export class LineSystem {
 
   clear(): void {
     this.lines = [];
+    this.steer = 0;
   }
 
   /**
@@ -238,6 +267,9 @@ export class LineSystem {
   update(yacht: Yacht, dt: number): ExternalForce[] {
     const s = this.settings;
     const forces: ExternalForce[] = [];
+    const pair = this.cockpitPair(yacht);
+    if (!pair) this.steer = 0;
+    const steerLine = pair && Math.abs(this.steer) > 0.02 ? pair[this.steer < 0 ? 0 : 1] : null;
     for (const line of this.lines) {
       const work = this.leg(yacht, line.cleatId, line.anchor, line.length);
       if (!work) continue;
@@ -248,7 +280,13 @@ export class LineSystem {
       let tension = work.tension;
 
       // Crew/Modus: Länge anpassen
-      switch (line.mode) {
+      if (line === steerLine) {
+        // dosiert fieren vom Cockpit aus (über die Winsch): je weiter der Regler, desto weniger Bremse
+        const a = Math.abs(this.steer);
+        const brake = s.easeForce + (s.handHoldForce - s.easeForce) * (1 - a);
+        if (tension > brake) tension = slipAbove(line, tension, brake, k, 2.5 * dt);
+        else if (tension > 20) line.length += s.easeRate * a * dt;
+      } else switch (line.mode) {
         case 'hand':
           tension = slipAbove(line, tension, s.handHoldForce, k, 1.5 * dt);
           break;

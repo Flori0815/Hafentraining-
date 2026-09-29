@@ -62,6 +62,8 @@ export interface TaskDef {
   initialLines?: [string, string][];
   /** Fender, die zu Beginn schon hängen */
   fenders?: FenderSide[];
+  /** Besatzung: 'solo' = Einhand (Skipper muss selbst an Deck); Standard Mannschaft */
+  crew?: 'crew' | 'solo';
   /** Yacht-Vorlage (ID aus PRESETS); ohne Angabe die eigene Yacht */
   yacht?: string;
   tags?: string[];

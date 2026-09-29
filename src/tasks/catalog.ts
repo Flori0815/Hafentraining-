@@ -429,6 +429,131 @@ export const TASKS: TaskDef[] = [
     briefing: 'Träger Langkieler, 14 m Lücke, auflandige Böen und Strömung. Eindampfen in eine Spring ist Pflicht – Fender und Ballfender an die Kontaktpunkte.',
     tags: ['Längsseits', 'Ablegen', 'Langkiel'],
   },
+  // ================================================================ Einhand
+  // Der Skipper ist allein: Er muss selbst an Deck, Gas und Ruder bleiben
+  // solange stehen. Heckleinen sind nah am Cockpit, zum Bug ist es weit.
+  {
+    id: 'einhand-box-flaute',
+    title: 'Einhand in die Box bei Flaute',
+    difficulty: 2,
+    harbor: 'boxengasse',
+    crew: 'solo',
+    goal: { kind: 'moor', berth: 'box-n10', orientation: 'bowToPier' },
+    briefing:
+      'Allein an Bord: Jeder Gang zum Bug dauert, und so lange steht das Ruder. Sehr langsam einlaufen, Heckleinen vom Cockpit aus auf die Dalben, Maschine in Neutral – erst dann nach vorn zu den Bugleinen.',
+    tags: ['Box', 'Einhand', 'Grundlagen'],
+  },
+  {
+    id: 'einhand-laengsseits-flaute',
+    title: 'Einhand längsseits bei Flaute',
+    difficulty: 2,
+    harbor: 'laengsseits',
+    crew: 'solo',
+    goal: { kind: 'moor', berth: 'gap-a', orientation: 'portSide' },
+    briefing:
+      'Fender vorher ausbringen. Parallel an den Steg, zuerst eine Spring von der Mittelklampe (kurzer Weg) – dann kann das Boot nicht mehr weg, und du hast Zeit für Vor- und Achterleine.',
+    tags: ['Längsseits', 'Einhand', 'Spring'],
+  },
+  {
+    id: 'einhand-manoeverleinen-box',
+    title: 'Einhand rückwärts in die Box mit Manöverleinen',
+    difficulty: 3,
+    harbor: 'boxengasse',
+    crew: 'solo',
+    goal: { kind: 'moor', berth: 'box-n12', orientation: 'sternToPier' },
+    env: { windSpeedKn: 8, windFromDeg: 270, gustiness: 0.2, windShiftDeg: 8 },
+    briefing:
+      'Beide Manöverleinen über die Dalben legen und ins Cockpit führen. Dann rückwärts in die Box und mit dem Regler dosiert fieren: So hältst du den Bug gegen den Seitenwind in der Spur, ohne das Ruder zu verlassen.',
+    tags: ['Box', 'Einhand', 'Manöverleine', 'Wind'],
+  },
+  {
+    id: 'einhand-laengsseits-ablandig',
+    title: 'Einhand längsseits, ablandiger Wind',
+    difficulty: 4,
+    harbor: 'laengsseits',
+    crew: 'solo',
+    goal: { kind: 'moor', berth: 'gap-b' },
+    env: { windSpeedKn: 12, windFromDeg: 10, gustiness: 0.3, windShiftDeg: 10 },
+    briefing:
+      'Der Wind drückt vom Steg weg, und du bist allein. Mittelklampe als Spring auf einen Poller, belegen und leicht voraus eindampfen: Das Boot legt sich parallel an den Steg. Dann in Ruhe die übrigen Leinen.',
+    tags: ['Längsseits', 'Einhand', 'Eindampfen', 'Wind'],
+  },
+  {
+    id: 'einhand-box-seitenwind',
+    title: 'Einhand in die Box bei starkem Seitenwind',
+    difficulty: 5,
+    harbor: 'boxengasse',
+    crew: 'solo',
+    goal: { kind: 'moor', berth: 'box-s8', orientation: 'bowToPier' },
+    env: { windSpeedKn: 16, windFromDeg: 270, gustiness: 0.4, windShiftDeg: 12 },
+    briefing:
+      'Starker Seitenwind, niemand an Deck. Die Luv-Dalbe ist dein Halt: Manöverleine über die Luv-Dalbe ins Cockpit, dann einfahren und die Leine als Führung nutzen. Bugleinen erst, wenn das Boot sicher in der Box hängt.',
+    tags: ['Box', 'Einhand', 'Manöverleine', 'Starkwind'],
+  },
+  {
+    id: 'einhand-ablegen-box',
+    title: 'Einhand rückwärts aus der Box',
+    difficulty: 2,
+    harbor: 'boxengasse',
+    crew: 'solo',
+    goal: { kind: 'depart', berth: 'box-n10', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 5, windFromDeg: 200, gustiness: 0.1, windShiftDeg: 5 },
+    briefing:
+      'Vorher die Heckleinen auf Slip legen: Manöverleinen über die Dalben ins Cockpit führen, festen Leinen los. Bugleinen los, zurück ans Ruder, rückwärts raus und die Manöverleinen vom Cockpit über Slip einholen.',
+    tags: ['Box', 'Einhand', 'Ablegen', 'Manöverleine'],
+  },
+  {
+    id: 'einhand-ablegen-laengsseits',
+    title: 'Einhand ablegen längsseits',
+    difficulty: 2,
+    harbor: 'laengsseits',
+    crew: 'solo',
+    goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    briefing:
+      'Alles bis auf eine Spring lösen, bevor du ans Ruder gehst. Die letzte Leine als Manöverleine auf Slip legen und ins Cockpit führen – dann kannst du sie vom Ruder aus einholen.',
+    tags: ['Längsseits', 'Einhand', 'Ablegen', 'Manöverleine'],
+  },
+  {
+    id: 'einhand-ablegen-box-wind',
+    title: 'Einhand vorwärts aus der Box mit Seitenwind',
+    difficulty: 3,
+    harbor: 'boxengasse',
+    crew: 'solo',
+    goal: { kind: 'depart', berth: 'box-n12', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'sternToPier',
+    env: { windSpeedKn: 10, windFromDeg: 270, gustiness: 0.25, windShiftDeg: 8 },
+    briefing:
+      'Heck am Steg, Wind von der Seite. Die Luv-Leine an der Dalbe auf Slip ins Cockpit führen, alle anderen los. Voraus raus und die Slip-Leine erst einholen, wenn der Bug frei ist.',
+    tags: ['Box', 'Einhand', 'Ablegen', 'Wind'],
+  },
+  {
+    id: 'einhand-ablegen-auflandig',
+    title: 'Einhand ablegen bei auflandigem Wind',
+    difficulty: 4,
+    harbor: 'laengsseits',
+    crew: 'solo',
+    goal: { kind: 'depart', berth: 'gap-a', zone: EXIT_LAENGSSEITS, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'portSide',
+    env: { windSpeedKn: 12, windFromDeg: 200, gustiness: 0.3, windShiftDeg: 8 },
+    briefing:
+      'Der Wind drückt an den Steg. Vorspring als Manöverleine ins Cockpit, alle anderen Leinen los, Fender am Bug. Rückwärts in die Spring eindampfen, bis das Heck frei ist, dann Slip einholen und zügig rückwärts ab.',
+    tags: ['Längsseits', 'Einhand', 'Ablegen', 'Eindampfen'],
+  },
+  {
+    id: 'einhand-ablegen-sturm',
+    title: 'Einhand raus aus der Box bei Starkwind',
+    difficulty: 5,
+    harbor: 'boxengasse',
+    crew: 'solo',
+    goal: { kind: 'depart', berth: 'box-n7', zone: EXIT_BOXENGASSE, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 18, windFromDeg: 240, gustiness: 0.4, windShiftDeg: 12 },
+    briefing:
+      'Starker, böiger Wind schräg von achtern. Beide Heckleinen als Manöverleinen ins Cockpit, Bugleinen los und sofort zurück ans Ruder. Rückwärts raus und mit dem Regler die Luv-Leine länger halten.',
+    tags: ['Box', 'Einhand', 'Ablegen', 'Starkwind'],
+  },
 ];
 
 export function findTask(id: string | null | undefined): TaskDef | undefined {

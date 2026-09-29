@@ -1,8 +1,10 @@
 import { SCENARIOS, buildScenario, type Harbor } from './harbor/harbor';
 import { DEFAULT_ENV, type EnvironmentSettings } from './physics/environment';
-import { DEFAULT_LINE_SETTINGS, type LineMode, type LineSettings, type ShoreAnchor } from './physics/lines';
+import { DEFAULT_LINE_SETTINGS, MAX_SLIP_LINES, type LineMode, type LineSettings, type ShoreAnchor } from './physics/lines';
 import { KN, clamp, worldToBody, type Vec2 } from './physics/vec';
 import { BALL_FENDER, nearestHullPoint, type FenderSide } from './physics/fenders';
+import { CREW_MODE_LABEL, type CrewMode } from './sim/crew';
+import { cleatName, orderBall, orderBallRemove, orderFenders, orderLeadAft, orderLine, orderSlip, orderThrow } from './sim/orders';
 import { IDLE_LEVER, NEUTRAL_ZONE } from './physics/yacht';
 import { PRESETS, SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from './physics/yachtConfig';
 import { Renderer, type Interaction } from './render/renderer';
@@ -34,6 +36,7 @@ function cloneLineSettings(s: LineSettings): LineSettings {
 }
 
 const sim = new Simulation(harbor, yachtCfg, envSettings, lineSettings);
+sim.crewMode = load<{ mode: CrewMode }>('crew', { mode: 'crew' }).mode === 'solo' ? 'solo' : 'crew';
 if (harbor.berths.some((b) => b.id === savedTarget && !b.occupied)) sim.targetBerthId = savedTarget;
 sim.reset();
 
@@ -140,7 +143,7 @@ window.addEventListener('keydown', (e) => {
     if (!e.repeat) setThrottle(k === 'arrowup' ? IDLE_LEVER : -IDLE_LEVER);
     return;
   }
-  if (e.repeat && !['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) return;
+  if (e.repeat && !['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ',', '.'].includes(k)) return;
   keys.add(k);
   switch (k) {
     case ' ':
@@ -181,6 +184,9 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'm':
       setSlipMode(!ia.slipMode);
+      break;
+    case 'z':
+      sim.crew.returnToHelm();
       break;
     case 'u':
       toggleFenders('p');
@@ -229,6 +235,10 @@ function applyHeldKeys(dt: number): void {
     }
     setThrottle(next);
   }
+  // Lenken mit den Manöverleinen: , / . halten
+  const sl = keys.has(',');
+  const sr = keys.has('.');
+  if (sl !== sr && sim.lines.cockpitPair(sim.yacht)) setSteer(sim.lines.steer + (sr ? 1 : -1) * 0.8 * dt);
   const left = keys.has('arrowleft') || keys.has('a');
   const right = keys.has('arrowright') || keys.has('d');
   if (left !== right) setHelm(c.helm + (right ? 1 : -1) * 1.1 * dt);
@@ -341,12 +351,9 @@ function handleClick(s: Vec2): void {
     const w = renderer.toWorld(s);
     const st = sim.yacht.state;
     const body = worldToBody({ x: w.x - st.pos.x, y: w.y - st.pos.y }, st.psi);
-    if (sim.fenders.placeBall(sim.yacht.model, body, sim.time)) {
-      sim.addLog('Ballfender wird ausgebracht …', 'info');
-      setPlacingBall(false);
-    } else {
-      flash('Näher am Rumpf klicken', w);
-    }
+    const err = orderBall(sim, body);
+    if (err) flash(err, w);
+    else setPlacingBall(false);
     return;
   }
   const p = pick(s);
@@ -363,36 +370,23 @@ function handleClick(s: Vec2): void {
       flash('Erst eine Klampe am Boot wählen', p.anchor.pos);
       return;
     }
-    const reach = sim.lines.canReach(sim.yacht, ia.selectedCleat, p.anchor);
-    const cleatName = sim.yacht.model.cleats.find((c) => c.id === ia.selectedCleat)?.name ?? '';
-    if (!reach.ok && reach.distance <= reach.range) {
-      flash(`Leine zu kurz: ${reach.cleatDistance.toFixed(1)} m ab Klampe (max. ${sim.lines.settings.maxLength} m)`, p.anchor.pos);
-      return;
-    }
-    if (!reach.ok) {
-      const how = p.anchor.kind === 'ring' ? 'Reichweite' : 'Wurfweite';
-      flash(`Zu weit: ${reach.distance.toFixed(1)} m (${how} ${reach.range} m)`, p.anchor.pos);
-      sim.addLog(`Wurf von ${cleatName} zu ${p.anchor.label} zu weit (${reach.distance.toFixed(1)} m)`, 'warn');
-      return;
-    }
     if (ia.slipMode) {
-      // Bucht liegt über dem Festpunkt – jetzt die zweite Klampe für die Holepart
+      if (sim.lines.slipCount >= MAX_SLIP_LINES) {
+        flash(`Beide Manöverleinen sind schon ausgebracht (${MAX_SLIP_LINES} an Bord)`, p.anchor.pos);
+        return;
+      }
+      // Bucht kommt über den Festpunkt – jetzt die zweite Klampe für die Holepart
       ia.slipFrom = { cleat: ia.selectedCleat, anchor: p.anchor };
       ia.selectedCleat = null;
       return;
     }
-    const line = sim.lines.attach(sim.yacht, ia.selectedCleat, p.anchor);
-    if (line) {
-      sim.addLog(`Leine ${line.id}: ${cleatName} → ${p.anchor.label} (${reach.distance.toFixed(1)} m), von Hand gehalten`, 'info');
-      ia.selectedLine = line.id;
-      ia.selectedCleat = null;
-    }
+    const err = orderThrow(sim, ia.selectedCleat, p.anchor);
+    if (err) flash(err, p.anchor.pos);
+    else ia.selectedCleat = null;
     return;
   }
   ia.selectedCleat = null;
 }
-
-const cleatName = (id: string) => sim.yacht.model.cleats.find((c) => c.id === id)?.name ?? id;
 
 function setSlipMode(on: boolean): void {
   ia.slipMode = on;
@@ -403,20 +397,11 @@ function setSlipMode(on: boolean): void {
 /** Manöverleine fertig ausbringen: Holepart auf die zweite Klampe. */
 function completeSlip(workCleat: string): void {
   const from = ia.slipFrom!;
-  if (workCleat === from.cleat) {
-    flash('Zweite, andere Klampe wählen', from.anchor.pos);
+  const err = orderSlip(sim, from.cleat, from.anchor, workCleat);
+  if (err) {
+    flash(err, from.anchor.pos);
     return;
   }
-  const line = sim.lines.attachSlip(sim.yacht, from.cleat, from.anchor, workCleat);
-  if (!line) {
-    flash(`Manöverleine zu kurz (max. ${sim.lines.settings.slipMaxLength} m)`, from.anchor.pos);
-    return;
-  }
-  sim.addLog(
-    `Manöverleine ${line.id}: ${cleatName(from.cleat)} → ${from.anchor.label} → ${cleatName(workCleat)}, Holepart von Hand gehalten`,
-    'info',
-  );
-  ia.selectedLine = line.id;
   setSlipMode(false);
 }
 
@@ -424,10 +409,7 @@ function completeSlip(workCleat: string): void {
 // Fender
 // ---------------------------------------------------------------------------
 function toggleFenders(side: FenderSide): void {
-  const st = sim.fenders.sideState(side, sim.time);
-  const out = st.out === 0;
-  sim.fenders.setSide(side, out, sim.time);
-  sim.addLog(`Fender ${side === 'p' ? 'Bb' : 'Stb'} ${out ? 'werden ausgebracht …' : 'eingeholt'}`, 'info');
+  orderFenders(sim, side);
 }
 
 function setPlacingBall(on: boolean): void {
@@ -451,10 +433,7 @@ function ballPreviewAt(s: Vec2): Vec2 | null {
 $('btn-fender-p').addEventListener('click', () => toggleFenders('p'));
 $('btn-fender-s').addEventListener('click', () => toggleFenders('s'));
 $('btn-fender-ball').addEventListener('click', () => setPlacingBall(!ia.placingBall));
-$('btn-fender-ball-off').addEventListener('click', () => {
-  if (sim.fenders.ball) sim.addLog('Ballfender eingeholt', 'info');
-  sim.fenders.removeBall();
-});
+$('btn-fender-ball-off').addEventListener('click', () => orderBallRemove(sim));
 
 function renderFenders(): void {
   const state = (side: FenderSide) => {
@@ -478,19 +457,74 @@ function flash(text: string, pos: Vec2): void {
   ia.flash = { text, pos, until: performance.now() + 2200 };
 }
 
-function lineAction(id: number, act: LineMode | 'release'): void {
-  const l = sim.lines.lines.find((x) => x.id === id);
-  if (!l) return;
-  if (act === 'release') {
-    sim.lines.release(id);
-    sim.addLog(l.slip ? `Manöverleine ${id} über Slip eingeholt` : `Leine ${id} losgeworfen`, 'info');
-    if (ia.selectedLine === id) ia.selectedLine = null;
-  } else {
-    sim.lines.setMode(id, act);
-    const names: Record<LineMode, string> = { hand: 'von Hand gehalten', heave: 'wird dichtgeholt', ease: 'wird gefiert', cleated: 'belegt' };
-    sim.addLog(`Leine ${id} ${names[act]}`, 'info');
-  }
+type LineAct = LineMode | 'release' | 'aft' | 'noaft';
+
+function lineAction(id: number, act: LineAct): void {
+  if (act === 'aft' || act === 'noaft') orderLeadAft(sim, id, act === 'aft');
+  else orderLine(sim, id, act);
   linesSignature = '';
+}
+
+sim.onLineAttached = (l) => {
+  ia.selectedLine = l.id;
+  linesSignature = '';
+};
+
+// ---------------------------------------------------------------------------
+// Besatzung und Lenken mit Manöverleinen
+// ---------------------------------------------------------------------------
+const steerInput = $<HTMLInputElement>('ctl-steer');
+
+function setSteer(v: number): void {
+  sim.lines.steer = clamp(v, -1, 1);
+  steerInput.value = String(Math.round(sim.lines.steer * 100));
+}
+steerInput.addEventListener('input', () => {
+  let v = Number(steerInput.value) / 100;
+  if (Math.abs(v) < 0.04) v = 0;
+  sim.lines.steer = v;
+});
+$('btn-steer-hold').addEventListener('click', () => setSteer(0));
+
+function updateCrewButton(): void {
+  const mode = sim.effectiveCrewMode;
+  const b = $<HTMLButtonElement>('btn-crew');
+  b.textContent = mode === 'solo' ? '👤 Einhand' : '👥 Mannschaft';
+  b.classList.toggle('on', mode === 'solo');
+  b.disabled = !!activeTask?.crew;
+  b.title = activeTask?.crew
+    ? `Die Aufgabe gibt die Besatzung vor: ${CREW_MODE_LABEL[mode]}`
+    : 'Besatzung umschalten: Mannschaft oder Einhand (startet das Manöver neu)';
+}
+$('btn-crew').addEventListener('click', () => {
+  if (activeTask?.crew) return;
+  sim.crewMode = sim.crewMode === 'solo' ? 'crew' : 'solo';
+  save('crew', { mode: sim.crewMode });
+  restart();
+});
+$('btn-helm-return').addEventListener('click', () => sim.crew.returnToHelm());
+
+function renderCrew(): void {
+  const c = sim.crew;
+  const solo = c.mode === 'solo';
+  const el = $('crew-state');
+  const away = solo && !c.atHelm;
+  el.textContent = solo ? `Einhand – Skipper ${c.activity}${away ? ' · Ruder unbesetzt!' : ''}` : c.activity;
+  el.classList.toggle('crew-warn', away);
+  $('btn-helm-return').hidden = !solo;
+  ($('btn-helm-return') as HTMLButtonElement).disabled = c.atHelm && !c.busy;
+  updateCrewButton();
+  // Regler zum Lenken erscheint, wenn beide Manöverleinen im Cockpit liegen
+  const pair = sim.lines.cockpitPair(sim.yacht);
+  $('slip-steer').hidden = !pair;
+  if (pair) {
+    $('steer-l').textContent = `◀ ${pair[0].id} fieren`;
+    $('steer-r').textContent = `${pair[1].id} fieren ▶`;
+    const v = sim.lines.steer;
+    $('out-steer').textContent =
+      Math.abs(v) < 0.02 ? 'Manöverleinen halten' : `Leine ${pair[v < 0 ? 0 : 1].id} wird gefiert · ${Math.round(Math.abs(v) * 100)}%`;
+    if (document.activeElement !== steerInput) steerInput.value = String(Math.round(v * 100));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -531,6 +565,7 @@ function resetUi(): void {
   ia.selectedLine = null;
   setPlacingBall(false);
   setSlipMode(false);
+  setSteer(0);
   bannerShown = false;
   $('banner').hidden = true;
   $('thruster-box').hidden = !sim.yachtConfig.bowThruster.enabled;
@@ -736,21 +771,25 @@ const MODE_LABEL: Record<LineMode, string> = { hand: 'Hand', heave: 'Holen', eas
 
 function renderLines(): void {
   const el = $('lines');
-  const sig = sim.lines.lines.map((l) => `${l.id}:${l.mode}`).join(',') + '|' + ia.selectedLine;
+  if (ia.selectedLine !== null && !sim.lines.lines.some((l) => l.id === ia.selectedLine)) ia.selectedLine = null;
+  const sig = sim.lines.lines.map((l) => `${l.id}:${l.mode}:${l.cockpit ? 1 : 0}`).join(',') + '|' + ia.selectedLine;
   if (sig !== linesSignature) {
     linesSignature = sig;
     el.innerHTML = sim.lines.lines
       .map((l) => {
         const title = l.slip
-          ? `${l.id} · Manöverleine ${cleatName(l.slip.cleatId)} ⇄ ${l.anchor.label} ⇄ ${cleatName(l.cleatId)}`
-          : `${l.id} · ${cleatName(l.cleatId)} → ${l.anchor.label}`;
+          ? `${l.id} · Manöverleine ${cleatName(sim, l.slip.cleatId)} ⇄ ${l.anchor.label} ⇄ ${l.cockpit ? 'Cockpit' : cleatName(sim, l.cleatId)}`
+          : `${l.id} · ${cleatName(sim, l.cleatId)} → ${l.anchor.label}`;
+        const aft = l.slip
+          ? `<button data-line="${l.id}" data-act="${l.cockpit ? 'noaft' : 'aft'}" class="${l.cockpit ? 'on' : ''}" title="Holepart an Deck nach achtern ins Cockpit führen – Bedienung vom Ruder aus">${l.cockpit ? 'im Cockpit' : '→ Cockpit'}</button>`
+          : '';
         const btn = (mode: LineMode, label: string, key: string) =>
           `<button data-line="${l.id}" data-act="${mode}" class="${l.mode === mode ? 'on' : ''}" title="${label} (${key})">${label}</button>`;
         return `<div class="line-card ${ia.selectedLine === l.id ? 'sel' : ''}" data-card="${l.id}">
           <div class="head"><b>${escapeHtml(title)}</b><span>${MODE_LABEL[l.mode]}</span></div>
           <div class="meta" data-meta="${l.id}"></div>
           <div class="tension"><div data-bar="${l.id}"></div></div>
-          <div class="btns">${btn('hand', 'Halten', 'G')}${btn('heave', 'Holen', 'H')}${btn('ease', 'Fieren', 'F')}${btn('cleated', 'Belegen', 'B')}
+          <div class="btns">${btn('hand', 'Halten', 'G')}${btn('heave', 'Holen', 'H')}${btn('ease', 'Fieren', 'F')}${btn('cleated', 'Belegen', 'B')}${aft}
           <button data-line="${l.id}" data-act="release" class="release" title="Loswerfen (L)">Los</button></div></div>`;
       })
       .join('');
@@ -775,7 +814,7 @@ function renderLines(): void {
     hint.textContent = 'Manöverleine: erste Klampe (feste Part) anklicken, dann Dalbe oder Stegklampe, dann die zweite Klampe.';
     hint.classList.add('active');
   } else if (ia.selectedCleat) {
-    const name = sim.yacht.model.cleats.find((c) => c.id === ia.selectedCleat)?.name;
+    const name = cleatName(sim, ia.selectedCleat!);
     hint.textContent = `${name} gewählt – jetzt Dalbe oder Stegklampe anklicken (grün = in Wurfweite).`;
     hint.classList.add('active');
   } else {
@@ -792,7 +831,7 @@ $('lines').addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
   const b = t.closest<HTMLButtonElement>('button[data-act]');
   if (b) {
-    lineAction(Number(b.dataset.line), b.dataset.act as LineMode | 'release');
+    lineAction(Number(b.dataset.line), b.dataset.act as LineAct);
     return;
   }
   const card = t.closest<HTMLElement>('[data-card]');
@@ -886,6 +925,7 @@ function renderPanel(): void {
     bestSignature = '';
   }
   renderBest();
+  renderCrew();
   renderFenders();
   renderLines();
   renderLog();
