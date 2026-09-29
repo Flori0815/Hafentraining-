@@ -647,6 +647,27 @@ function renderBest(): void {
       : 'Noch kein Ergebnis für diesen Liegeplatz.';
 }
 
+/** Erfolgskriterien als Checkliste; nach dem Erfolg das Ergebnis. */
+let checklistSignature = '';
+function renderChecklist(): void {
+  const s = sim.status;
+  const msg = $('task-msg');
+  msg.hidden = !s.completed;
+  if (s.completed) msg.textContent = '✔ ' + s.message;
+  const items = s.checklist;
+  const sig = JSON.stringify(items);
+  if (sig === checklistSignature) return;
+  checklistSignature = sig;
+  $('checklist').innerHTML = items
+    .map((c) => {
+      const extra = [c.progress, c.hint].filter(Boolean).join(' · ');
+      return `<li class="${c.done ? 'done' : 'open'}"><span class="mark">${c.done ? '✓' : '○'}</span><span class="lbl">${escapeHtml(c.label)}</span>${
+        extra ? `<span class="extra">${escapeHtml(extra)}</span>` : ''
+      }</li>`;
+    })
+    .join('');
+}
+
 /** Aufgaben-Kopf im Panel: Titel, Schwierigkeit, Einweisung, „Nächste“. */
 function renderTaskHeader(): void {
   const t = activeTask;
@@ -779,7 +800,7 @@ function renderPanel(): void {
 
   const s = sim.status;
   renderTaskHeader();
-  $('task-msg').textContent = s.completed ? '✔ ' + s.message : s.message;
+  renderChecklist();
   $('st-time').textContent = formatTime(s.time);
   $('st-contacts').textContent = `${s.contacts} (${s.hardContacts} hart)`;
   $('st-impact').textContent = `${s.maxImpactKn.toFixed(1)} kn`;
