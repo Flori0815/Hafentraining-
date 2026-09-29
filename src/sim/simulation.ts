@@ -24,6 +24,7 @@ import { mooringPlan, pierSide, placeMoored } from './mooring';
 import { ORIENTATION_LABEL } from '../tasks/types';
 import { FenderSet } from '../physics/fenders';
 import { Crew, type CrewMode } from './crew';
+import { fenderQualityFor, neighborFenders, type FenderQuality, type NeighborFender } from '../harbor/neighborFenders';
 
 export const PHYSICS_DT = 1 / 240;
 
@@ -94,6 +95,8 @@ export class Simulation {
   /** Oberfläche: eine Leine wurde ausgebracht (z. B. um sie auszuwählen) */
   onLineAttached?: (line: MooringLine) => void;
   collisions = new CollisionSystem();
+  /** Fender der Nachbarboote in den Boxen */
+  neighborFenders: NeighborFender[] = [];
   targetBerthId: string;
   /** aktive Aufgabe; null = freies Training */
   task: TaskDef | null = null;
@@ -117,13 +120,28 @@ export class Simulation {
     this.yacht = this.makeYacht();
     this.fenders = new FenderSet(this.yacht.model);
     this.crew = this.makeCrew();
-    this.collisions.setObstacles(harbor.piles, harbor.solids);
+    this.setObstacles();
     this.resetStatus();
   }
 
   private makeYacht(): Yacht {
     const s = this.task?.start ?? this.harbor.start;
     return new Yacht(this.yachtConfig, s.pos, s.headingDeg, s.speedKn);
+  }
+
+  /** Wie gut die Nachbarn abgefendert haben (Aufgabe, sonst optimal). */
+  get neighborFenderQuality(): FenderQuality {
+    const t = this.task;
+    return t ? (t.neighborFenders ?? fenderQualityFor(t.difficulty)) : 'good';
+  }
+
+  /** Hindernisse des Hafens samt Nachbarfendern setzen. */
+  private setObstacles(): void {
+    let seed = 11;
+    for (const ch of this.task?.id ?? this.harbor.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    this.neighborFenders = neighborFenders(this.harbor, this.neighborFenderQuality, seed);
+    this.collisions.setObstacles(this.harbor.piles, this.harbor.solids);
+    this.collisions.soft = this.neighborFenders;
   }
 
   /** Besatzung der aktuellen Aufgabe bzw. des freien Trainings. */
@@ -165,7 +183,7 @@ export class Simulation {
   setTask(task: TaskDef | null, harbor: Harbor, cfg?: YachtConfig, env?: EnvironmentSettings): void {
     this.task = task;
     this.harbor = harbor;
-    this.collisions.setObstacles(harbor.piles, harbor.solids);
+    this.setObstacles();
     this.targetBerthId = task ? task.goal.berth : harbor.defaultTarget;
     this.reset({ cfg, env });
   }
@@ -219,7 +237,7 @@ export class Simulation {
   setHarbor(harbor: Harbor, targetBerthId = harbor.defaultTarget): void {
     this.task = null;
     this.harbor = harbor;
-    this.collisions.setObstacles(harbor.piles, harbor.solids);
+    this.setObstacles();
     this.targetBerthId = harbor.berths.some((b) => b.id === targetBerthId && !b.occupied) ? targetBerthId : harbor.defaultTarget;
     this.reset();
   }

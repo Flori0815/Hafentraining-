@@ -51,8 +51,9 @@
           </div>
           <div class="slip-steer" id="slip-steer" hidden>
             <output id="out-steer">Manöverleinen halten</output>
+            <label class="ease-row"><span>beide fieren</span><input id="ctl-ease" type="range" min="0" max="100" step="1" value="0" aria-label="Beide Manöverleinen fieren" /></label>
             <input id="ctl-steer" type="range" min="-100" max="100" step="1" value="0" aria-label="Lenken mit den Manöverleinen" />
-            <div class="wheel-lbl"><span id="steer-l">◀ fieren</span><button id="btn-steer-hold" title="Beide Manöverleinen halten (,/. lenken)">halten</button><span id="steer-r">fieren ▶</span></div>
+            <div class="wheel-lbl"><span id="steer-l">◀ fieren</span><button id="btn-steer-hold" title="Beide Manöverleinen halten (Fieren 0, Lenken mittig)">halten</button><span id="steer-r">fieren ▶</span></div>
           </div>
         </div>
       </div>
@@ -166,7 +167,7 @@
               <li><kbd>1</kbd>…<kbd>9</kbd> Leine wählen</li>
               <li><kbd>G</kbd> von Hand halten · <kbd>H</kbd> dichtholen · <kbd>F</kbd> fieren · <kbd>B</kbd> belegen · <kbd>L</kbd> loswerfen</li>
               <li><kbd>M</kbd> Manöverleine (Kraftdreieck): erste Klampe → Dalbe/Stegklampe → zweite Klampe. Die Leine rutscht am Festpunkt mit etwas Reibung durch; gearbeitet wird an der Holepart (zweite Klampe). „Los“ holt sie über Slip von Bord ein – ideal zum Ablegen ohne Helfer an Land. Zählt nicht als Festmacher.</li>
-              <li>Manöverleine „→ Cockpit“: Holepart nach achtern führen. Liegen beide Manöverleinen im Cockpit, erscheint ein Regler: dosiert fieren und so lenken (<kbd>,</kbd>/<kbd>.</kbd>).</li>
+              <li>Manöverleine „→ Cockpit“: Holepart nach achtern führen. Liegen beide Manöverleinen im Cockpit, erscheint ein Regler: „beide fieren“ lässt beide gleich auslaufen (geradeaus, <kbd>X</kbd> mehr / <kbd>Y</kbd> weniger), der Lenk-Regler fiert eine Seite mehr (<kbd>,</kbd>/<kbd>.</kbd>).</li>
               <li><kbd>Esc</kbd> Auswahl aufheben</li>
             </ul>
             <h3>Besatzung</h3>

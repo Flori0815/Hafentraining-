@@ -219,6 +219,17 @@ button.primary {
   width: 100%;
   accent-color: #fbbf24;
 }
+.ease-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ease-row input {
+  flex: 1;
+  accent-color: #fbbf24;
+}
 .slip-steer output {
   text-align: center;
   font-size: 12px;

@@ -143,7 +143,7 @@ window.addEventListener('keydown', (e) => {
     if (!e.repeat) setThrottle(k === 'arrowup' ? IDLE_LEVER : -IDLE_LEVER);
     return;
   }
-  if (e.repeat && !['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ',', '.'].includes(k)) return;
+  if (e.repeat && !['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ',', '.', 'x', 'y'].includes(k)) return;
   keys.add(k);
   switch (k) {
     case ' ':
@@ -239,6 +239,9 @@ function applyHeldKeys(dt: number): void {
   const sl = keys.has(',');
   const sr = keys.has('.');
   if (sl !== sr && sim.lines.cockpitPair(sim.yacht)) setSteer(sim.lines.steer + (sr ? 1 : -1) * 0.8 * dt);
+  const em = keys.has('x');
+  const el = keys.has('y');
+  if (em !== el && sim.lines.cockpitPair(sim.yacht)) setEase(sim.lines.ease + (em ? 1 : -1) * 0.6 * dt);
   const left = keys.has('arrowleft') || keys.has('a');
   const right = keys.has('arrowright') || keys.has('d');
   if (left !== right) setHelm(c.helm + (right ? 1 : -1) * 1.1 * dt);
@@ -484,7 +487,18 @@ steerInput.addEventListener('input', () => {
   if (Math.abs(v) < 0.04) v = 0;
   sim.lines.steer = v;
 });
-$('btn-steer-hold').addEventListener('click', () => setSteer(0));
+const easeInput = $<HTMLInputElement>('ctl-ease');
+function setEase(v: number): void {
+  sim.lines.ease = clamp(v, 0, 1);
+  easeInput.value = String(Math.round(sim.lines.ease * 100));
+}
+easeInput.addEventListener('input', () => {
+  sim.lines.ease = Number(easeInput.value) / 100;
+});
+$('btn-steer-hold').addEventListener('click', () => {
+  setSteer(0);
+  setEase(0);
+});
 
 function updateCrewButton(): void {
   const mode = sim.effectiveCrewMode;
@@ -520,10 +534,12 @@ function renderCrew(): void {
   if (pair) {
     $('steer-l').textContent = `◀ ${pair[0].id} fieren`;
     $('steer-r').textContent = `${pair[1].id} fieren ▶`;
-    const v = sim.lines.steer;
+    const [a, b] = sim.lines.cockpitEase();
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
     $('out-steer').textContent =
-      Math.abs(v) < 0.02 ? 'Manöverleinen halten' : `Leine ${pair[v < 0 ? 0 : 1].id} wird gefiert · ${Math.round(Math.abs(v) * 100)}%`;
-    if (document.activeElement !== steerInput) steerInput.value = String(Math.round(v * 100));
+      a < 0.02 && b < 0.02 ? 'Manöverleinen halten' : `fieren: Leine ${pair[0].id} ${pct(a)} · Leine ${pair[1].id} ${pct(b)}`;
+    if (document.activeElement !== steerInput) steerInput.value = String(Math.round(sim.lines.steer * 100));
+    if (document.activeElement !== easeInput) easeInput.value = String(Math.round(sim.lines.ease * 100));
   }
 }
 
@@ -566,6 +582,7 @@ function resetUi(): void {
   setPlacingBall(false);
   setSlipMode(false);
   setSteer(0);
+  setEase(0);
   bannerShown = false;
   $('banner').hidden = true;
   $('thruster-box').hidden = !sim.yachtConfig.bowThruster.enabled;

@@ -3,6 +3,7 @@
  * Bestleistung; Filter nach Schwierigkeit. Skaliert mit dem Katalog.
  */
 import { buildScenario } from '../harbor/harbor';
+import { FENDER_QUALITY_LABEL, fenderQualityFor } from '../harbor/neighborFenders';
 import { tasksByDifficulty } from '../tasks/catalog';
 import { DIFFICULTY_LABEL, ORIENTATION_LABEL, taskEnv, type Difficulty, type TaskDef } from '../tasks/types';
 import { formatTime } from '../sim/simulation';
@@ -31,6 +32,8 @@ export function taskSummary(t: TaskDef): string {
   if (env.currentSpeedKn > 0) parts.push(`Strom ${env.currentSpeedKn} kn`);
   if (t.yacht === 'sy36-long') parts.push('Langkieler');
   if (t.crew === 'solo') parts.push('Einhand');
+  const nf = t.neighborFenders ?? fenderQualityFor(t.difficulty);
+  if (nf !== 'good' && h.berths.some((b) => b.kind === 'box')) parts.push(FENDER_QUALITY_LABEL[nf]);
   return parts.join(' · ');
 }
 
