@@ -54,7 +54,8 @@ Strip-Theorie für den Lateralplan. Integration mit festem Schritt 1/240 s.
 | **Wind** | Seiten-/Frontfläche, scheinbarer Wind, Angriffspunkt wandert zum Luv-Ende → **Bug fällt ab**. Böen und Winddreher als Ornstein-Uhlenbeck-Prozess (reproduzierbar per Seed). In der Karte als Windstreifen sichtbar, die mit Windrichtung und -geschwindigkeit ziehen und in Böen kräftiger werden; die kurzen Striche zeigen die Strömung. |
 | **Strömung** | Alle hydrodynamischen Kräfte rechnen mit Fahrt durchs Wasser; Zusatzmassen-Terme mit Relativgeschwindigkeit. |
 | **Leinen** | Elastisch (EA/L), nur Zug, Dämpfung. Crew hält (Törn um die Klampe, rutscht erst über ~1500 N durch), holt dicht (bis ~900 N, unter Last langsamer), fiert (Leine läuft kontrolliert aus, Zug bleibt bei ~150 N), belegt, wirft los. Wurfweite je Festpunkt (Dalbe 6 m, Stegklampe 7 m, einstellbar), gemessen ab der Bordkante: Die Crew läuft mit der belegten Leine an Deck zur günstigsten Stelle und wirft von dort; die Leine führt dann von der Klampe zum Festpunkt. **Eindampfen** entsteht physikalisch aus Leinenkraft + Schub + Ruder. |
-| **Manöverleine** | Kraftdreieck: von einer Bordklampe um Dalbe/Stegklampe zurück zu einer zweiten Bordklampe. Beide Parten elastisch; am Festpunkt rutscht die Leine durch, sobald der Zugunterschied die Seilreibung übersteigt (60 N + Umschlingung 180°, μ = 0,1). Die Crew arbeitet an der Holepart; „Los“ holt die Leine über Slip von Bord ein. Zählt nicht als Festmacher. Zwei Manöverleinen an Bord; die Holepart lässt sich an Deck ins Cockpit führen. Liegen beide im Cockpit, erscheint ein Regler: Er fiert dosiert die linke oder rechte Leine (je weiter, desto weniger Bremskraft) – so lenkt der Skipper vom Ruder aus. |
+| **Manöverleine** | Kraftdreieck: von einer Bordklampe um Dalbe/Stegklampe zurück zu einer zweiten Bordklampe. Beide Parten elastisch; am Festpunkt rutscht die Leine durch, sobald der Zugunterschied die Seilreibung übersteigt (60 N + Umschlingung 180°, μ = 0,1). Die Crew arbeitet an der Holepart; „Los“ holt die Leine über Slip von Bord ein. Zählt nicht als Festmacher. Zwei Manöverleinen an Bord; die Holepart lässt sich an Deck ins Cockpit führen. Liegen beide im Cockpit, erscheinen zwei Regler: „beide fieren“ lässt beide Leinen gleich dosiert auslaufen (geradeaus), der Lenk-Regler fiert eine Seite mehr als die andere (je mehr, desto weniger Bremskraft) – so steuert der Skipper vom Ruder aus. |
+| **Nachbarboote** | Boote in den Boxen haben Fender draußen (weiche Kontaktkörper; langsamer Kontakt über einen Nachbarfender kostet nichts). Stufe 1–2: drei je Seite an der breitesten Stelle; Stufe 3–4: nur einzelne; Stufe 5: fehlen oft oder hängen zu weit vorn/achtern. Im freien Training optimal. |
 | **Besatzung** | *Mannschaft*: Befehle werden sofort ausgeführt, der Skipper bleibt am Ruder. *Einhand*: Der Skipper läuft selbst an Deck (0,8 m/s; Heckklampen ~3 s, Bug ~10 s), nimmt die Leine, wirft von der Bordkante (Wurfweite wird beim Wurf geprüft – treibt das Boot weg, geht er daneben), belegt und kehrt zurück. Solange er nicht am Ruder ist, bleiben Gas und Ruder stehen, das Bugstrahlruder ist aus. Eine gehaltene Leine belegt er, bevor er weitergeht. Ins Cockpit geführte Manöverleinen bedient er vom Ruder aus. |
 | **Kontakte** | Rumpfkontur gegen Dalben, Stege, Kaimauer und andere Boote (Feder/Dämpfer + Reibung), Aufprallgeschwindigkeit wird bewertet. |
 
@@ -86,7 +87,8 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 | `U` / `I` | Fender Bb / Stb raus bzw. einholen |
 | `O` | Ballfender setzen: danach Stelle am Rumpf anklicken |
 | `M` | Manöverleine: Klampe → Festpunkt → zweite Klampe |
-| `,` / `.` | Lenken mit beiden Manöverleinen im Cockpit (links/rechts fieren) |
+| `,` / `.` | Lenken mit beiden Manöverleinen im Cockpit (links/rechts mehr fieren) |
+| `X` / `Y` | beide Manöverleinen im Cockpit mehr / weniger fieren |
 | `Z` | Einhand: Skipper zurück ans Ruder |
 
 Maus/Touch: Ziehen verschiebt die Karte, Mausrad/Pinch zoomt. Gashebel und
@@ -184,7 +186,7 @@ Ablegen: `goal: { kind: 'depart', berth, zone, zoneLabel }` plus
 Lage und Leinen im Liegeplatz berechnet die Simulation passend zur jeweiligen
 Yacht (auch zu eigenen Yachten), längsseits hängen die Fender schon.
 
-Optional: `crew: 'solo'` (Einhand), `start` (Startlage), `initialLines` (belegte Leinen zu Beginn),
+Optional: `crew: 'solo'` (Einhand), `neighborFenders: 'good' | 'sparse' | 'poor' | 'none'` (sonst nach Stufe), `start` (Startlage), `initialLines` (belegte Leinen zu Beginn),
 `fenders` (hängen schon), `yacht` (Vorlage, z. B. `'sy36-long'`).
 `npm test` prüft jede Aufgabe automatisch: gültige Daten, kollisionsfreier
 Start und grundsätzliche Lösbarkeit (ein Musterskipper legt korrekt an bzw.

@@ -130,11 +130,18 @@ export class LineSystem {
   private nextId = 1;
   events: string[] = [];
   /**
-   * Lenken mit zwei ins Cockpit geführten Manöverleinen: −1 … 1. Negativ
-   * fiert die linke (weiter backbord festgemachte), positiv die rechte Leine,
-   * je weiter, desto schneller und mit weniger Bremskraft.
+   * Zwei ins Cockpit geführte Manöverleinen dosiert fieren: `ease` (0 … 1)
+   * fiert beide gleich, `steer` (−1 … 1) verschiebt das Fieren zur linken
+   * (negativ) bzw. rechten Leine. Links = weiter backbord festgemacht.
    */
+  ease = 0;
   steer = 0;
+
+  /** Fier-Anteil (0 … 1) der linken und rechten Cockpit-Leine. */
+  cockpitEase(): [number, number] {
+    const c = (v: number) => Math.min(1, Math.max(0, v));
+    return [c(this.ease - this.steer), c(this.ease + this.steer)];
+  }
 
   constructor(settings: LineSettings = DEFAULT_LINE_SETTINGS) {
     this.settings = settings;
@@ -258,6 +265,7 @@ export class LineSystem {
   clear(): void {
     this.lines = [];
     this.steer = 0;
+    this.ease = 0;
   }
 
   /**
@@ -268,8 +276,8 @@ export class LineSystem {
     const s = this.settings;
     const forces: ExternalForce[] = [];
     const pair = this.cockpitPair(yacht);
-    if (!pair) this.steer = 0;
-    const steerLine = pair && Math.abs(this.steer) > 0.02 ? pair[this.steer < 0 ? 0 : 1] : null;
+    if (!pair) this.steer = this.ease = 0;
+    const amounts = this.cockpitEase();
     for (const line of this.lines) {
       const work = this.leg(yacht, line.cleatId, line.anchor, line.length);
       if (!work) continue;
@@ -280,9 +288,9 @@ export class LineSystem {
       let tension = work.tension;
 
       // Crew/Modus: Länge anpassen
-      if (line === steerLine) {
-        // dosiert fieren vom Cockpit aus (über die Winsch): je weiter der Regler, desto weniger Bremse
-        const a = Math.abs(this.steer);
+      const a = pair ? (line === pair[0] ? amounts[0] : line === pair[1] ? amounts[1] : 0) : 0;
+      if (a > 0.02) {
+        // dosiert fieren vom Cockpit aus (über die Winsch): je mehr, desto weniger Bremse
         const brake = s.easeForce + (s.handHoldForce - s.easeForce) * (1 - a);
         if (tension > brake) tension = slipAbove(line, tension, brake, k, 2.5 * dt);
         else if (tension > 20) line.length += s.easeRate * a * dt;

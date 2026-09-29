@@ -6,6 +6,7 @@
  */
 import type { EnvironmentSettings } from '../physics/environment';
 import type { FenderSide } from '../physics/fenders';
+import type { FenderQuality } from '../harbor/neighborFenders';
 import type { Vec2 } from '../physics/vec';
 
 /** 1 Einsteiger · 2 Leicht · 3 Mittel · 4 Schwer · 5 Experte */
@@ -60,6 +61,8 @@ export interface TaskDef {
   startMoored?: Orientation;
   /** Leinen, die zu Beginn belegt sind: [Klampe an Bord, Festpunkt-ID] */
   initialLines?: [string, string][];
+  /** Fender der Nachbarboote in den Boxen; Standard nach Schwierigkeit (leicht optimal, schwer lückenhaft) */
+  neighborFenders?: FenderQuality;
   /** Fender, die zu Beginn schon hängen */
   fenders?: FenderSide[];
   /** Besatzung: 'solo' = Einhand (Skipper muss selbst an Deck); Standard Mannschaft */

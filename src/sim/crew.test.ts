@@ -11,8 +11,8 @@ import { Simulation } from './simulation';
 const CALM = { ...DEFAULT_ENV, windSpeedKn: 0, gustiness: 0, currentSpeedKn: 0 };
 
 /** Längsseits in Lücke A, Kurs Ost, Steg an Bb; Boot liegt still. */
-function setup(mode: CrewMode) {
-  const sim = new Simulation(buildLaengsseits(), SAILING_YACHT_36, CALM);
+function setup(mode: CrewMode, env = CALM) {
+  const sim = new Simulation(buildLaengsseits(), SAILING_YACHT_36, env);
   sim.crewMode = mode;
   sim.reset();
   const st = sim.yacht.state;
@@ -95,8 +95,8 @@ describe('Besatzung', () => {
 });
 
 describe('Zwei Manöverleinen, Lenken aus dem Cockpit', () => {
-  function twoSlips(mode: CrewMode) {
-    const sim = setup(mode);
+  function twoSlips(mode: CrewMode, env = CALM) {
+    const sim = setup(mode, env);
     const a = bollardAt(sim, 'bow-p');
     const b = bollardAt(sim, 'stern-p');
     expect(orderSlip(sim, 'bow-p', a, 'mid-p')).toBeNull();
@@ -129,6 +129,31 @@ describe('Zwei Manöverleinen, Lenken aus dem Cockpit', () => {
     const [l1, r1] = len();
     expect(r1 - r0).toBeGreaterThan(0.3);
     expect(Math.abs(l1 - l0)).toBeLessThan(0.05);
+  });
+
+  it('„beide fieren“ lässt beide Leinen gleich auslaufen, Lenken verschiebt den Anteil', () => {
+    // ablandiger Wind (von Norden, Steg im Norden) belastet beide Leinen
+    const sim = twoSlips('crew', { ...CALM, windSpeedKn: 15, windFromDeg: 0 });
+    for (const l of sim.lines.lines) orderLeadAft(sim, l.id, true);
+    const pair = sim.lines.cockpitPair(sim.yacht)!;
+    for (const l of pair) orderLine(sim, l.id, 'heave');
+    runUntil(sim, () => false, 6);
+    for (const l of pair) orderLine(sim, l.id, 'cleated');
+    runUntil(sim, () => false, 4);
+    expect(Math.min(...pair.map((l) => l.tension))).toBeGreaterThan(100);
+    const len = () => pair.map((l) => l.length + l.slip!.length);
+    sim.lines.ease = 0.6;
+    expect(sim.lines.cockpitEase()).toEqual([0.6, 0.6]);
+    const [l0, r0] = len();
+    runUntil(sim, () => false, 4);
+    const [l1, r1] = len();
+    expect(l1 - l0).toBeGreaterThan(0.3);
+    expect(r1 - r0).toBeGreaterThan(0.3);
+    expect(Math.abs(l1 - l0 - (r1 - r0))).toBeLessThan(0.5 * Math.max(l1 - l0, r1 - r0));
+    sim.lines.steer = -0.3;
+    const [a, b] = sim.lines.cockpitEase();
+    expect(a).toBeCloseTo(0.9);
+    expect(b).toBeCloseTo(0.3);
   });
 
   it('Einhand: ins Cockpit geführte Leinen bedient der Skipper vom Ruder aus', () => {

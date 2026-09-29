@@ -42,6 +42,8 @@ export interface MooredBoat {
   loa: number;
   beam: number;
   color: string;
+  /** liegt in einer Box (hat dann Fender zu den Nachbarn) */
+  inBox?: boolean;
 }
 
 export interface Harbor {
@@ -148,6 +150,7 @@ function addBoxRow(
         loa,
         beam,
         color: COLORS[(i + (side === 'n' ? 0 : 3)) % COLORS.length],
+        inBox: true,
       });
     }
   }

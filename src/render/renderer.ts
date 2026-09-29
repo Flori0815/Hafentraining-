@@ -528,6 +528,19 @@ export class Renderer {
     const ctx = this.ctx;
     const y = sim.yacht;
     const touching = new Set(sim.collisions.contacts.filter((c) => c.via === 'fender').map((c) => c.fenderId));
+    // Fender der Nachbarboote
+    for (const f of sim.neighborFenders) {
+      const p = this.toScreen(f.pos);
+      if (p.x < -10 || p.y < -10 || p.x > this.width + 10 || p.y > this.height + 10) continue;
+      const hit = touching.has(f.id);
+      ctx.fillStyle = '#6b8fbf';
+      ctx.strokeStyle = hit ? '#fde047' : 'rgba(10,20,30,0.8)';
+      ctx.lineWidth = hit ? 2.5 : 1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(2, f.r * this.camera.scale), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     for (const f of sim.fenders.all()) {
       if (!f.out) continue;
       const s = this.toScreen(y.toWorld(f.pos));

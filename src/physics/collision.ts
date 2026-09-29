@@ -13,6 +13,14 @@ export interface CircleObstacle {
   radius: number;
 }
 
+/** Weicher Kreis, z. B. Fender eines Nachbarboots */
+export interface SoftCircle {
+  id: string;
+  pos: Vec2;
+  r: number;
+  k: number;
+}
+
 export interface PolygonObstacle {
   id: string;
   kind: 'pier' | 'wall' | 'boat';
@@ -69,6 +77,8 @@ function bbox(poly: Vec2[]): { minX: number; minY: number; maxX: number; maxY: n
 
 export class CollisionSystem {
   circles: CircleObstacle[] = [];
+  /** Fender der Nachbarboote: Kontakt zählt wie über einen Fender */
+  soft: SoftCircle[] = [];
   polygons: PolygonObstacle[] = [];
   contacts: Contact[] = [];
   private polyBoxes: ReturnType<typeof bbox>[] = [];
@@ -150,6 +160,35 @@ export class CollisionSystem {
         n = { x: n.x / l, y: n.y / l };
         addContact(ob.id, ob.kind, cp.point, n, inside ? f.r + cp.dist : f.r - cp.dist, f.k, damping, f);
       }
+    }
+
+    // eigene Fender gegen Fender der Nachbarn (Reihenschaltung der Federn)
+    for (const f of fenders) {
+      const c = yacht.toWorld(f.pos);
+      for (const nf of this.soft) {
+        const dx = c.x - nf.pos.x;
+        const dy = c.y - nf.pos.y;
+        const d = Math.hypot(dx, dy);
+        const reach = f.r + nf.r;
+        if (d >= reach || d < 1e-9) continue;
+        const n = { x: dx / d, y: dy / d };
+        const k = (f.k * nf.k) / (f.k + nf.k);
+        addContact(nf.id, 'boat', { x: nf.pos.x + n.x * nf.r, y: nf.pos.y + n.y * nf.r }, n, reach - d, k, dampingFor(k), f);
+      }
+    }
+
+    // Fender der Nachbarn gegen den Rumpf
+    for (const nf of this.soft) {
+      const c = nf.pos;
+      if (c.x < hb.minX - nf.r || c.x > hb.maxX + nf.r || c.y < hb.minY - nf.r || c.y > hb.maxY + nf.r) continue;
+      const inside = pointInPolygon(c, hull);
+      const cp = closestOnPolygon(c, hull);
+      if (!inside && cp.dist >= nf.r) continue;
+      let n = sub(cp.point, c);
+      const l = Math.hypot(n.x, n.y);
+      n = l < 1e-6 ? { x: -cp.edgeNormal.x, y: -cp.edgeNormal.y } : inside ? { x: -n.x / l, y: -n.y / l } : { x: n.x / l, y: n.y / l };
+      const soft = { id: nf.id, kind: 'std' as const, pos: { x: 0, y: 0 }, r: nf.r, k: nf.k };
+      addContact(nf.id, 'boat', cp.point, n, inside ? nf.r + cp.dist : nf.r - cp.dist, nf.k, dampingFor(nf.k), soft);
     }
 
     // Dalben
