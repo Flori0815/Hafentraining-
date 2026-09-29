@@ -53,7 +53,7 @@ Strip-Theorie für den Lateralplan. Integration mit festem Schritt 1/240 s.
 | **Maschine** | Standschub aus Leistung und Propeller-Ø (Impulstheorie), Schub fällt mit Fortschrittsgeschwindigkeit, Rückwärtsschub reduziert, Leerlauf eingekuppelt ≈ 2–3 kn, **Schaltverzögerung über Neutral**, Drehzahlträgheit. |
 | **Wind** | Seiten-/Frontfläche, scheinbarer Wind, Angriffspunkt wandert zum Luv-Ende → **Bug fällt ab**. Böen und Winddreher als Ornstein-Uhlenbeck-Prozess (reproduzierbar per Seed). In der Karte als Windstreifen sichtbar, die mit Windrichtung und -geschwindigkeit ziehen und in Böen kräftiger werden; die kurzen Striche zeigen die Strömung. |
 | **Strömung** | Alle hydrodynamischen Kräfte rechnen mit Fahrt durchs Wasser; Zusatzmassen-Terme mit Relativgeschwindigkeit. |
-| **Leinen** | Elastisch (EA/L), nur Zug, Dämpfung. Crew hält (Törn um die Klampe, rutscht erst über ~1500 N durch), holt dicht (bis ~900 N, unter Last langsamer), fiert (Leine läuft kontrolliert aus, Zug bleibt bei ~150 N), belegt, wirft los. Wurfweite je Festpunkt (Dalbe 6 m, Stegklampe 7 m, einstellbar). **Eindampfen** entsteht physikalisch aus Leinenkraft + Schub + Ruder. |
+| **Leinen** | Elastisch (EA/L), nur Zug, Dämpfung. Crew hält (Törn um die Klampe, rutscht erst über ~1500 N durch), holt dicht (bis ~900 N, unter Last langsamer), fiert (Leine läuft kontrolliert aus, Zug bleibt bei ~150 N), belegt, wirft los. Wurfweite je Festpunkt (Dalbe 6 m, Stegklampe 7 m, einstellbar), gemessen ab der Bordkante: Die Crew läuft mit der belegten Leine an Deck zur günstigsten Stelle und wirft von dort; die Leine führt dann von der Klampe zum Festpunkt. **Eindampfen** entsteht physikalisch aus Leinenkraft + Schub + Ruder. |
 | **Manöverleine** | Kraftdreieck: von einer Bordklampe um Dalbe/Stegklampe zurück zu einer zweiten Bordklampe. Beide Parten elastisch; am Festpunkt rutscht die Leine durch, sobald der Zugunterschied die Seilreibung übersteigt (60 N + Umschlingung 180°, μ = 0,1). Die Crew arbeitet an der Holepart; „Los“ holt die Leine über Slip von Bord ein. Zählt nicht als Festmacher. |
 | **Kontakte** | Rumpfkontur gegen Dalben, Stege, Kaimauer und andere Boote (Feder/Dämpfer + Reibung), Aufprallgeschwindigkeit wird bewertet. |
 
@@ -78,7 +78,7 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 | `←`/`A`, `→`/`D` | Steuerrad nach Bb/Stb (bleibt stehen wie ein echtes Rad) |
 | `C` | Ruder mittschiffs |
 | `Q`/`E` | Bugstrahlruder (falls konfiguriert) |
-| Klick Klampe → Klick Festpunkt | Leine werfen (nur innerhalb der Wurfweite) |
+| Klick Klampe → Klick Festpunkt | Leine werfen (Wurfweite ab Bordkante) |
 | `1`–`9` | Leine wählen |
 | `G` / `H` / `F` / `B` / `L` | Halten / Dichtholen / Fieren / Belegen / Loswerfen |
 | `V` `K` `P` `T` `R` | Kamera folgen, Kräfte anzeigen, Pause, Zeitraffer, Neustart |

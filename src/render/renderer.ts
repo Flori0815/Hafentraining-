@@ -3,8 +3,8 @@
  */
 import type { Harbor } from '../harbor/harbor';
 import { boatOutline } from '../harbor/harbor';
-import type { MooringLine, ShoreAnchor } from '../physics/lines';
-import { KN, bodyToWorld, dist, type Vec2 } from '../physics/vec';
+import { throwDistance, type MooringLine, type ShoreAnchor } from '../physics/lines';
+import { KN, bodyToWorld, pointInPolygon, type Vec2 } from '../physics/vec';
 import type { Simulation } from '../sim/simulation';
 
 export interface Camera {
@@ -632,22 +632,26 @@ export class Renderer {
     const sel = ia.selectedCleat;
     const cleatPos = sel ? y.cleatWorld(sel) : null;
     if (cleatPos) {
-      // Wurfweiten-Kreise je Festpunkt-Typ
-      const s = this.toScreen(cleatPos);
+      // Wurfweiten je Festpunkt-Typ: geworfen wird von der Bordkante, wohin die Crew mit der Leine läuft
       const ranges = sim.lines.settings.throwRange;
       const uniq = Array.from(new Set([ranges.pile, ranges.bollard, ranges.ring])).sort((a, b) => b - a);
+      const outline = y.model.outline;
       for (const r of uniq) {
+        const pts = offsetOutline(outline, r).map((p) => this.toScreen(y.toWorld(p)));
         ctx.strokeStyle = 'rgba(255,210,74,0.55)';
         ctx.setLineDash([5, 5]);
         ctx.lineWidth = 1.2;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, r * this.camera.scale, 0, Math.PI * 2);
+        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.closePath();
         ctx.stroke();
         ctx.setLineDash([]);
+        // Beschriftung querab an Stb
+        const lp = this.toScreen(y.toWorld({ x: 0, y: y.model.cfg.hull.beam / 2 + r }));
         ctx.fillStyle = 'rgba(255,210,74,0.8)';
         ctx.font = '10px system-ui, sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`${r} m`, s.x + r * this.camera.scale * 0.72 + 3, s.y - r * this.camera.scale * 0.72);
+        ctx.fillText(`${r} m`, lp.x + 3, lp.y - 3);
       }
     }
     for (const an of sim.harbor.anchors) {
@@ -655,7 +659,7 @@ export class Renderer {
       const s = this.toScreen(an.pos);
       if (s.x < -20 || s.y < -20 || s.x > this.width + 20 || s.y > this.height + 20) continue;
       let reach = false;
-      if (cleatPos) reach = dist(cleatPos, an.pos) <= sim.lines.settings.throwRange[an.kind];
+      if (sel) reach = sim.lines.canReach(y, sel, an).ok;
       const hov = ia.hoverAnchor?.id === an.id;
       if (an.kind === 'pile') {
         ctx.strokeStyle = reach ? '#7dff9e' : 'rgba(255,255,255,0.35)';
@@ -677,10 +681,7 @@ export class Renderer {
     if (ia.hoverAnchor) {
       const s = this.toScreen(ia.hoverAnchor.pos);
       let txt = ia.hoverAnchor.label;
-      if (cleatPos) {
-        const d = dist(cleatPos, ia.hoverAnchor.pos);
-        txt += ` · ${d.toFixed(1)} m`;
-      }
+      if (cleatPos) txt += ` · Wurf ${throwDistance(y, ia.hoverAnchor.pos).toFixed(1)} m`;
       this.label(txt, s.x + 10, s.y - 12);
     }
   }
@@ -822,4 +823,23 @@ export class Renderer {
       ctx.fillText('Pause', this.width / 2, this.height / 2);
     }
   }
+}
+
+/** Kontur um `r` Meter nach außen versetzt (Bordkante + Wurfweite), in Bootskoordinaten. */
+function offsetOutline(outline: Vec2[], r: number): Vec2[] {
+  const n = outline.length;
+  return outline.map((p, i) => {
+    const a = outline[(i - 1 + n) % n];
+    const b = outline[(i + 1) % n];
+    const tx = b.x - a.x;
+    const ty = b.y - a.y;
+    const l = Math.hypot(tx, ty) || 1;
+    let nx = ty / l;
+    let ny = -tx / l;
+    if (pointInPolygon({ x: p.x + nx * 0.01, y: p.y + ny * 0.01 }, outline)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { x: p.x + nx * r, y: p.y + ny * r };
+  });
 }

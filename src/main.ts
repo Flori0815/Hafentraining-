@@ -365,6 +365,10 @@ function handleClick(s: Vec2): void {
     }
     const reach = sim.lines.canReach(sim.yacht, ia.selectedCleat, p.anchor);
     const cleatName = sim.yacht.model.cleats.find((c) => c.id === ia.selectedCleat)?.name ?? '';
+    if (!reach.ok && reach.distance <= reach.range) {
+      flash(`Leine zu kurz: ${reach.cleatDistance.toFixed(1)} m ab Klampe (max. ${sim.lines.settings.maxLength} m)`, p.anchor.pos);
+      return;
+    }
     if (!reach.ok) {
       const how = p.anchor.kind === 'ring' ? 'Reichweite' : 'Wurfweite';
       flash(`Zu weit: ${reach.distance.toFixed(1)} m (${how} ${reach.range} m)`, p.anchor.pos);

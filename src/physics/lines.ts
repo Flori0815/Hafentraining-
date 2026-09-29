@@ -12,7 +12,8 @@
  * Festpunkt zurück zu einer zweiten Bordklampe und rutscht dort mit etwas
  * Reibung durch. Losgeworfen wird sie von Bord (über Slip einholen).
  */
-import { clamp, dist, dot, norm, scale, sub, type Vec2 } from './vec';
+import { nearestHullPoint } from './fenders';
+import { clamp, dist, dot, norm, pointInPolygon, scale, sub, worldToBody, type Vec2 } from './vec';
 import type { ExternalForce, Yacht } from './yacht';
 
 export type LineMode = 'hand' | 'heave' | 'ease' | 'cleated';
@@ -98,7 +99,15 @@ export interface MooringLine {
   slip?: SlipLeg;
 }
 
-export const isSlip = (l: MooringLine): l is MooringLine & { slip: SlipLeg } => !!l.slip;
+/** Kürzeste Wurfdistanz von der Bordkante (Deckskontur) zu einem Punkt [m]. */
+export function throwDistance(yacht: Yacht, target: Vec2): number {
+  const st = yacht.state;
+  const body = worldToBody({ x: target.x - st.pos.x, y: target.y - st.pos.y }, st.psi);
+  if (pointInPolygon(body, yacht.model.outline)) return 0;
+  return nearestHullPoint(yacht.model.outline, body).dist;
+}
+
+export const isSlip =(l: MooringLine): l is MooringLine & { slip: SlipLeg } => !!l.slip;
 
 /**
  * Leine rutscht durch (Hände, Klampe), sobald der Zug `limit` übersteigt:
@@ -120,13 +129,24 @@ export class LineSystem {
     this.settings = settings;
   }
 
-  /** Prüft, ob die Leine geworfen/gelegt werden kann. */
-  canReach(yacht: Yacht, cleatId: string, anchor: ShoreAnchor): { ok: boolean; distance: number; range: number } {
+  /**
+   * Prüft, ob die Leine geworfen/gelegt werden kann. Die Crew läuft mit der
+   * auf der Klampe belegten Leine an Deck zur günstigsten Stelle und wirft
+   * von der Bordkante: Die Wurfweite zählt ab dem nächsten Punkt des Rumpfs,
+   * die Leine muss aber von der Klampe bis zum Festpunkt reichen.
+   * `distance` ist die Wurfdistanz, `cleatDistance` der Abstand zur Klampe.
+   */
+  canReach(
+    yacht: Yacht,
+    cleatId: string,
+    anchor: ShoreAnchor,
+  ): { ok: boolean; distance: number; range: number; cleatDistance: number } {
     const c = yacht.cleatWorld(cleatId);
     const range = this.settings.throwRange[anchor.kind];
-    if (!c) return { ok: false, distance: Infinity, range };
-    const d = dist(c, anchor.pos);
-    return { ok: d <= range, distance: d, range };
+    if (!c) return { ok: false, distance: Infinity, range, cleatDistance: Infinity };
+    const cleatDistance = dist(c, anchor.pos);
+    const d = throwDistance(yacht, anchor.pos);
+    return { ok: d <= range && cleatDistance + 0.4 <= this.settings.maxLength, distance: d, range, cleatDistance };
   }
 
   /** Leine ausbringen. Gibt null zurück, wenn außer Reichweite. */
@@ -138,7 +158,7 @@ export class LineSystem {
       cleatId,
       anchor,
       // etwas Lose: die Leine liegt nach dem Wurf nicht sofort steif
-      length: Math.min(this.settings.maxLength, reach.distance + 0.4),
+      length: Math.min(this.settings.maxLength, reach.cleatDistance + 0.4),
       mode: 'hand',
       tension: 0,
       slack: 0.4,
@@ -180,7 +200,7 @@ export class LineSystem {
     const reach = this.canReach(yacht, fixedCleatId, anchor);
     const w = yacht.cleatWorld(workCleatId);
     if (!reach.ok || !w) return null;
-    const dFixed = reach.distance;
+    const dFixed = reach.cleatDistance;
     const dWork = dist(w, anchor.pos);
     if (dFixed + dWork + 0.6 > this.settings.slipMaxLength) return null;
     const line: MooringLine = {

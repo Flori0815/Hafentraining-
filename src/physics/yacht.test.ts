@@ -207,6 +207,21 @@ describe('Leinen', () => {
     expect(ls.attach(y, 'bow-p', far)).toBeNull();
   });
 
+  it('Wurfweite zählt ab der Bordkante: mit der Leine nach achtern laufen und werfen', () => {
+    const y = new Yacht(SAILING_YACHT_36);
+    const ls = new LineSystem();
+    // Dalbe 5 m achteraus des Hecks, von der Mittelklampe über 10 m entfernt
+    const stern = y.toWorld({ x: Math.min(...y.model.outline.map((p) => p.x)), y: 0 });
+    const a: ShoreAnchor = { id: 'z', kind: 'pile', pos: { x: stern.x, y: stern.y - 5 }, label: '' };
+    const r = ls.canReach(y, 'mid-p', a);
+    expect(r.cleatDistance).toBeGreaterThan(ls.settings.throwRange.pile + 3);
+    expect(r.distance).toBeCloseTo(5, 0);
+    expect(r.ok).toBe(true);
+    const l = ls.attach(y, 'mid-p', a)!;
+    // Leine reicht von der Mittelklampe bis zur Dalbe
+    expect(l.length).toBeGreaterThan(r.cleatDistance);
+  });
+
   it('zwei belegte Heckleinen halten das Boot gegen Motorschub', () => {
     const y = new Yacht(SAILING_YACHT_36);
     const ls = new LineSystem();
