@@ -82,8 +82,14 @@ export class Crew {
     return this.mode === 'crew' || dist(this.pos, this.helm) < 0.05;
   }
 
-  /** Auftrag erteilen. Mit Mannschaft sofort ausgeführt, Einhand in die Warteschlange. */
+  /** Gleicher Auftrag schon erteilt (laufend oder wartend)? */
+  hasJob(label: string): boolean {
+    return this.current?.job.label === label || this.queue.some((j) => j.label === label);
+  }
+
+  /** Auftrag erteilen. Mit Mannschaft sofort ausgeführt, Einhand in die Warteschlange; doppelte Aufträge zählen einmal. */
   order(job: CrewJob): void {
+    if (this.mode === 'solo' && this.hasJob(job.label)) return;
     if (this.mode === 'crew') {
       for (const s of job.steps) {
         const err = s.check?.();

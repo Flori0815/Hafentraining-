@@ -104,6 +104,18 @@ export interface MooringLine {
 /** Ausrüstung: so viele Manöverleinen sind an Bord */
 export const MAX_SLIP_LINES = 2;
 
+/**
+ * Vorbereitete Leine: an der Klampe belegt und klar über der Reling, noch
+ * nicht an Land. Beim Anlegen muss sie nur noch geworfen werden. Eine
+ * Manöverleine hat zusätzlich die Klampe der Holepart (oder liegt schon im
+ * Cockpit).
+ */
+export interface PreparedLine {
+  id: number;
+  cleatId: string;
+  slip?: { workCleatId: string; cockpit: boolean };
+}
+
 /** Kürzeste Wurfdistanz von der Bordkante (Deckskontur) zu einem Punkt [m]. */
 export function throwDistance(yacht: Yacht, target: Vec2): number {
   const st = yacht.state;
@@ -236,8 +248,34 @@ export class LineSystem {
     return line;
   }
 
+  /** vorbereitete, noch nicht geworfene Leinen */
+  prepared: PreparedLine[] = [];
+  private nextPrepId = 1;
+
   get slipCount(): number {
     return this.lines.filter((l) => l.slip).length;
+  }
+
+  /** Manöverleinen in Gebrauch: ausgebracht oder vorbereitet */
+  get slipsInUse(): number {
+    return this.slipCount + this.prepared.filter((p) => p.slip).length;
+  }
+
+  preparedAt(cleatId: string): PreparedLine | undefined {
+    return this.prepared.find((p) => p.cleatId === cleatId);
+  }
+
+  /** Leine an einer Klampe vorbereiten; null, wenn dort schon eine liegt oder keine Manöverleine frei ist. */
+  prepare(cleatId: string, slip?: { workCleatId: string; cockpit?: boolean }): PreparedLine | null {
+    if (this.preparedAt(cleatId)) return null;
+    if (slip && (slip.workCleatId === cleatId || this.slipsInUse >= MAX_SLIP_LINES)) return null;
+    const p: PreparedLine = { id: this.nextPrepId++, cleatId, slip: slip ? { workCleatId: slip.workCleatId, cockpit: !!slip.cockpit } : undefined };
+    this.prepared.push(p);
+    return p;
+  }
+
+  unprepare(id: number): void {
+    this.prepared = this.prepared.filter((p) => p.id !== id);
   }
 
   /**
@@ -264,6 +302,7 @@ export class LineSystem {
 
   clear(): void {
     this.lines = [];
+    this.prepared = [];
     this.steer = 0;
     this.ease = 0;
   }

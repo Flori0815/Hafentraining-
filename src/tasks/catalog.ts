@@ -440,7 +440,7 @@ export const TASKS: TaskDef[] = [
     crew: 'solo',
     goal: { kind: 'moor', berth: 'box-n10', orientation: 'bowToPier' },
     briefing:
-      'Allein an Bord: Jeder Gang zum Bug dauert, und so lange steht das Ruder. Sehr langsam einlaufen, Heckleinen vom Cockpit aus auf die Dalben, Maschine in Neutral – erst dann nach vorn zu den Bugleinen.',
+      'Allein an Bord: Jeder Gang zum Bug dauert, und so lange steht das Ruder. Noch in der Gasse alle vier Leinen vorbereiten (J). Dann sehr langsam einlaufen, Heckleinen auf die Dalben, Maschine in Neutral – erst dann nach vorn zu den Bugleinen.',
     tags: ['Box', 'Einhand', 'Grundlagen'],
   },
   {
@@ -451,7 +451,7 @@ export const TASKS: TaskDef[] = [
     crew: 'solo',
     goal: { kind: 'moor', berth: 'gap-a', orientation: 'portSide' },
     briefing:
-      'Fender vorher ausbringen. Parallel an den Steg, zuerst eine Spring von der Mittelklampe (kurzer Weg) – dann kann das Boot nicht mehr weg, und du hast Zeit für Vor- und Achterleine.',
+      'Fender und Leinen vorbereiten, solange du noch weit weg bist. Parallel an den Steg, zuerst eine Spring von der Mittelklampe (kurzer Weg) – dann kann das Boot nicht mehr weg, und du hast Zeit für Vor- und Achterleine.',
     tags: ['Längsseits', 'Einhand', 'Spring'],
   },
   {
@@ -463,7 +463,7 @@ export const TASKS: TaskDef[] = [
     goal: { kind: 'moor', berth: 'box-n12', orientation: 'sternToPier' },
     env: { windSpeedKn: 8, windFromDeg: 270, gustiness: 0.2, windShiftDeg: 8 },
     briefing:
-      'Beide Manöverleinen über die Dalben legen und ins Cockpit führen. Dann rückwärts in die Box und mit dem Regler dosiert fieren: So hältst du den Bug gegen den Seitenwind in der Spur, ohne das Ruder zu verlassen.',
+      'Unterwegs beide Manöverleinen vorbereiten (N) und schon ins Cockpit führen. An den Dalben nur noch werfen, dann rückwärts in die Box und mit den Reglern dosiert fieren: So hältst du den Bug gegen den Seitenwind in der Spur, ohne das Ruder zu verlassen.',
     tags: ['Box', 'Einhand', 'Manöverleine', 'Wind'],
   },
   {
