@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { KN, bodyToWorld, type Vec2 } from './vec';
 import { Yacht, foilForce } from './yacht';
 import { LONG_KEEL_36, SAILING_YACHT_36, cloneConfig, validateConfig } from './yachtConfig';
-import { LineSystem, type ShoreAnchor } from './lines';
+import { CLEAT_TURN_FRICTION, LineSystem, type ShoreAnchor } from './lines';
 
 const calm: Vec2 = { x: 0, y: 0 };
 const DT = 1 / 240;
@@ -336,9 +336,9 @@ describe('Manöverleine (Kraftdreieck)', () => {
     }
   };
 
-  it('braucht zwei verschiedene Klampen und Wurfweite zur ersten', () => {
+  it('braucht Wurfweite zur ersten Klampe; dieselbe Klampe zweimal = doppelt über die Klampe', () => {
     const { y, ls, a } = setup();
-    expect(ls.attachSlip(y, 'bow-s', a, 'bow-s')).toBeNull();
+    expect(new LineSystem().attachSlip(y, 'stern-s', a, 'stern-s')?.slip?.cleatId).toBe('stern-s');
     const far: ShoreAnchor = { ...a, id: 'f', pos: { x: 30, y: 0 } };
     expect(ls.attachSlip(y, 'bow-s', far, 'stern-s')).toBeNull();
     const l = ls.attachSlip(y, 'bow-s', a, 'stern-s')!;
@@ -390,5 +390,41 @@ describe('Manöverleine (Kraftdreieck)', () => {
     ls.release(l.id);
     expect(ls.lines).toHaveLength(0);
     expect(ls.update(y, DT)).toEqual([]);
+  });
+});
+
+describe('Manöverleine doppelt über die Klampe', () => {
+  /** Boot läuft mit 1,5 kn rückwärts von zwei Pollern voraus weg; beide Manöverleinen im Cockpit werden gefiert. */
+  const maxTension = (doubled: boolean) => {
+    const y = new Yacht(SAILING_YACHT_36, { x: 0, y: 0 }, 0, -1.5);
+    const ls = new LineSystem();
+    const mk = (side: 'p' | 's'): ShoreAnchor => {
+      const c = y.cleatWorld(`bow-${side}`)!;
+      return { id: side, kind: 'bollard', pos: { x: c.x + (side === 'p' ? -1 : 1), y: c.y + 2.5 }, label: '' };
+    };
+    for (const side of ['p', 's'] as const) {
+      const l = ls.attachSlip(y, `bow-${side}`, mk(side), doubled ? `bow-${side}` : `mid-${side}`)!;
+      l.cockpit = true;
+      l.mode = 'cleated';
+    }
+    ls.ease = 0.4;
+    let max = 0;
+    for (let i = 0; i < 240 * 4; i++) {
+      const f = ls.update(y, DT);
+      y.step(DT, calm, calm, f);
+      for (const l of ls.lines) max = Math.max(max, l.tension);
+    }
+    return max;
+  };
+
+  it('die Umlenkung über die Klampe bremst beim Fieren mehr', () => {
+    const s = new LineSystem().settings;
+    const brake = s.easeForce + (s.handHoldForce - s.easeForce) * 0.6;
+    const plain = maxTension(false);
+    const dbl = maxTension(true);
+    // Zugspitze beim Fieren liegt an der Bremskraft (plus Dämpfung)
+    expect(plain).toBeLessThan(brake * 1.25);
+    expect(dbl).toBeGreaterThan(plain * 1.25);
+    expect(dbl).toBeLessThan(brake * CLEAT_TURN_FRICTION * 1.25);
   });
 });

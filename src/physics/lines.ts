@@ -103,6 +103,15 @@ export interface MooringLine {
 
 /** Ausrüstung: so viele Manöverleinen sind an Bord */
 export const MAX_SLIP_LINES = 2;
+/**
+ * Läuft die Holepart einer Manöverleine über dieselbe Klampe wie die feste
+ * Part (doppelt über die Achterklampe, direkt ins Cockpit), bremst die
+ * Umlenkung an der Klampe beim Fieren zusätzlich (Seilreibung ~180°).
+ */
+export const CLEAT_TURN_FRICTION = 1.5;
+
+/** Manöverleine, deren beide Parten über dieselbe Klampe laufen */
+export const isDoubled = (l: { cleatId: string; slip?: { cleatId: string } }): boolean => !!l.slip && l.slip.cleatId === l.cleatId;
 
 /**
  * Vorbereitete Leine: an der Klampe belegt und klar über der Reling, noch
@@ -226,7 +235,7 @@ export class LineSystem {
    * Part ist belegt, an der Holepart arbeitet die Crew.
    */
   attachSlip(yacht: Yacht, fixedCleatId: string, anchor: ShoreAnchor, workCleatId: string): MooringLine | null {
-    if (fixedCleatId === workCleatId || this.slipCount >= MAX_SLIP_LINES) return null;
+    if (this.slipCount >= MAX_SLIP_LINES) return null;
     const reach = this.canReach(yacht, fixedCleatId, anchor);
     const w = yacht.cleatWorld(workCleatId);
     if (!reach.ok || !w) return null;
@@ -268,8 +277,10 @@ export class LineSystem {
   /** Leine an einer Klampe vorbereiten; null, wenn dort schon eine liegt oder keine Manöverleine frei ist. */
   prepare(cleatId: string, slip?: { workCleatId: string; cockpit?: boolean }): PreparedLine | null {
     if (this.preparedAt(cleatId)) return null;
-    if (slip && (slip.workCleatId === cleatId || this.slipsInUse >= MAX_SLIP_LINES)) return null;
-    const p: PreparedLine = { id: this.nextPrepId++, cleatId, slip: slip ? { workCleatId: slip.workCleatId, cockpit: !!slip.cockpit } : undefined };
+    if (slip && this.slipsInUse >= MAX_SLIP_LINES) return null;
+    // doppelt über dieselbe Klampe: die Holepart geht direkt ins Cockpit
+    const cockpit = !!slip && (!!slip.cockpit || slip.workCleatId === cleatId);
+    const p: PreparedLine = { id: this.nextPrepId++, cleatId, slip: slip ? { workCleatId: slip.workCleatId, cockpit } : undefined };
     this.prepared.push(p);
     return p;
   }
@@ -330,7 +341,8 @@ export class LineSystem {
       const a = pair ? (line === pair[0] ? amounts[0] : line === pair[1] ? amounts[1] : 0) : 0;
       if (a > 0.02) {
         // dosiert fieren vom Cockpit aus (über die Winsch): je mehr, desto weniger Bremse
-        const brake = s.easeForce + (s.handHoldForce - s.easeForce) * (1 - a);
+        const turn = isDoubled(line) ? CLEAT_TURN_FRICTION : 1;
+        const brake = (s.easeForce + (s.handHoldForce - s.easeForce) * (1 - a)) * turn;
         if (tension > brake) tension = slipAbove(line, tension, brake, k, 2.5 * dt);
         else if (tension > 20) line.length += s.easeRate * a * dt;
       } else switch (line.mode) {

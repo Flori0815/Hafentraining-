@@ -242,3 +242,29 @@ describe('Leinen vorbereiten', () => {
     expect(sim.lines.prepared).toHaveLength(0);
   });
 });
+
+describe('Manöverleine doppelt über die Achterklampe', () => {
+  it('Einhand: von der Achterklampe um den Poller und direkt ins Cockpit – schnell, Skipper bleibt am Ruder', () => {
+    const sim = setup('solo');
+    expect(orderSlip(sim, 'stern-p', bollardAt(sim, 'stern-p'), 'stern-p')).toBeNull();
+    const t = runUntil(sim, () => sim.lines.lines.length > 0);
+    expect(t).toBeLessThan(15);
+    const l = sim.lines.lines[0];
+    expect(l.slip?.cleatId).toBe('stern-p');
+    expect(l.cleatId).toBe('stern-p');
+    expect(l.cockpit).toBe(true);
+    expect(l.mode).toBe('cleated');
+    runUntil(sim, () => sim.crew.atHelm, 10);
+    expect(sim.crew.atHelm).toBe(true);
+    expect(sim.crew.attending).toBeNull();
+  });
+
+  it('vorbereitet mit zweimal derselben Klampe: Holepart liegt schon im Cockpit', () => {
+    const sim = setup('solo');
+    sim.yacht.state.pos = { x: -10, y: -12 };
+    expect(orderPrepareSlip(sim, 'stern-s', 'stern-s')).toBeNull();
+    runUntil(sim, () => !sim.crew.busy, 60);
+    expect(sim.lines.preparedAt('stern-s')?.slip).toEqual({ workCleatId: 'stern-s', cockpit: true });
+  });
+
+});
