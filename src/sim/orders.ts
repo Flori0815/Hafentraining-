@@ -14,6 +14,7 @@ import type { Simulation } from './simulation';
 /** Arbeitszeiten Einhand [s] */
 export const SOLO_SECONDS = {
   takeLine: 1.5,
+  prepare: 4,
   throwLine: 2,
   leadSlip: 2.5,
   leadAft: 3,
@@ -60,30 +61,46 @@ function reachError(sim: Simulation, cleat: string, anchor: ShoreAnchor, slack =
   return null;
 }
 
-/** Wurf: Klampe → Festpunkt. */
+/** Wurfschritt: zur Reling an der günstigsten Stelle, werfen; prüft die Reichweite beim Wurf. */
+function throwStep(sim: Simulation, cleat: string, anchor: ShoreAnchor, what: string): CrewStep {
+  return {
+    at: throwSpot(sim, anchor),
+    seconds: SOLO_SECONDS.throwLine,
+    label: `wirft ${what} zu ${anchor.label}`,
+    check: () => {
+      const e = reachError(sim, cleat, anchor);
+      return e ? `Wurf zu ${anchor.label} daneben – ${e}` : null;
+    },
+  };
+}
+
+/**
+ * Wurf: Klampe → Festpunkt. Liegt an der Klampe eine vorbereitete Leine,
+ * muss der Skipper nur noch zur Reling und werfen; eine vorbereitete
+ * Manöverleine wird als Manöverleine ausgebracht.
+ */
 export function orderThrow(sim: Simulation, cleat: string, anchor: ShoreAnchor): string | null {
+  const prep = sim.lines.preparedAt(cleat);
+  if (prep?.slip) return orderSlip(sim, cleat, anchor, prep.slip.workCleatId);
   const pre = reachError(sim, cleat, anchor, solo(sim) ? SOLO_PLAN_AHEAD : 0);
   if (pre) {
     sim.addLog(`Wurf von ${cleatName(sim, cleat)} zu ${anchor.label}: ${pre}`, 'warn');
     return pre;
   }
+  const steps: CrewStep[] = prep
+    ? [throwStep(sim, cleat, anchor, 'vorbereitete Leine')]
+    : [
+        { at: cleatPos(sim, cleat), seconds: SOLO_SECONDS.takeLine, label: `belegt Leine auf ${cleatName(sim, cleat)}` },
+        throwStep(sim, cleat, anchor, 'Leine'),
+      ];
   sim.crew.order({
     label: `Leine von ${cleatName(sim, cleat)} zu ${anchor.label}`,
-    steps: [
-      { at: cleatPos(sim, cleat), seconds: SOLO_SECONDS.takeLine, label: `belegt Leine auf ${cleatName(sim, cleat)}` },
-      {
-        at: throwSpot(sim, anchor),
-        seconds: SOLO_SECONDS.throwLine,
-        label: `wirft zu ${anchor.label}`,
-        check: () => {
-          const e = reachError(sim, cleat, anchor);
-          return e ? `Wurf zu ${anchor.label} daneben – ${e}` : null;
-        },
-      },
-    ],
+    steps,
     run: () => {
       const line = sim.lines.attach(sim.yacht, cleat, anchor);
       if (!line) return;
+      const used = sim.lines.preparedAt(cleat);
+      if (used && !used.slip) sim.lines.unprepare(used.id);
       const r = sim.lines.canReach(sim.yacht, cleat, anchor);
       sim.addLog(`Leine ${line.id}: ${cleatName(sim, cleat)} → ${anchor.label} (Wurf ${r.distance.toFixed(1)} m), von Hand gehalten`, 'info');
       sim.onLineAttached?.(line);
@@ -93,26 +110,26 @@ export function orderThrow(sim: Simulation, cleat: string, anchor: ShoreAnchor):
   return null;
 }
 
-/** Manöverleine: erste Klampe → Festpunkt → zweite Klampe. */
+/**
+ * Manöverleine: erste Klampe → Festpunkt → zweite Klampe. Ist sie an der
+ * ersten Klampe schon vorbereitet (Holepart klar bzw. im Cockpit), bleibt
+ * nur der Wurf.
+ */
 export function orderSlip(sim: Simulation, fixedCleat: string, anchor: ShoreAnchor, workCleat: string): string | null {
   if (fixedCleat === workCleat) return 'Zweite, andere Klampe wählen';
-  if (sim.lines.slipCount >= MAX_SLIP_LINES) return `Beide Manöverleinen sind schon ausgebracht (${MAX_SLIP_LINES} an Bord)`;
+  const prep = sim.lines.preparedAt(fixedCleat);
+  const ready = prep?.slip && prep.slip.workCleatId === workCleat ? prep : undefined;
+  if (!ready && sim.lines.slipsInUse >= MAX_SLIP_LINES) return `Beide Manöverleinen sind schon in Gebrauch (${MAX_SLIP_LINES} an Bord)`;
   const pre = reachError(sim, fixedCleat, anchor, solo(sim) ? SOLO_PLAN_AHEAD : 0);
   if (pre) return pre;
   const failTooShort = () => `Manöverleine zu kurz (max. ${sim.lines.settings.slipMaxLength} m)`;
-  const steps: CrewStep[] = [
-    { at: cleatPos(sim, fixedCleat), seconds: SOLO_SECONDS.takeLine, label: `belegt Manöverleine auf ${cleatName(sim, fixedCleat)}` },
-    {
-      at: throwSpot(sim, anchor),
-      seconds: SOLO_SECONDS.throwLine,
-      label: `wirft Bucht über ${anchor.label}`,
-      check: () => {
-        const e = reachError(sim, fixedCleat, anchor);
-        return e ? `Manöverleine: Wurf zu ${anchor.label} daneben – ${e}` : null;
-      },
-    },
-    { at: cleatPos(sim, workCleat), seconds: SOLO_SECONDS.leadSlip, label: `führt Holepart zu ${cleatName(sim, workCleat)}` },
-  ];
+  const steps: CrewStep[] = ready
+    ? [throwStep(sim, fixedCleat, anchor, 'vorbereitete Manöverleine')]
+    : [
+        { at: cleatPos(sim, fixedCleat), seconds: SOLO_SECONDS.takeLine, label: `belegt Manöverleine auf ${cleatName(sim, fixedCleat)}` },
+        throwStep(sim, fixedCleat, anchor, 'Bucht'),
+        { at: cleatPos(sim, workCleat), seconds: SOLO_SECONDS.leadSlip, label: `führt Holepart zu ${cleatName(sim, workCleat)}` },
+      ];
   sim.crew.order({
     label: `Manöverleine ${cleatName(sim, fixedCleat)} → ${anchor.label} → ${cleatName(sim, workCleat)}`,
     steps,
@@ -122,15 +139,120 @@ export function orderSlip(sim: Simulation, fixedCleat: string, anchor: ShoreAnch
         sim.addLog(sim.lines.slipCount >= MAX_SLIP_LINES ? 'Keine Manöverleine mehr frei' : failTooShort(), 'warn');
         return;
       }
+      const used = sim.lines.preparedAt(fixedCleat);
+      const cockpit = !!(used?.slip && used.slip.workCleatId === workCleat && used.slip.cockpit);
+      if (used?.slip) sim.lines.unprepare(used.id);
+      if (cockpit) {
+        // Holepart liegt schon auf der Winsch im Cockpit
+        line.cockpit = true;
+        line.mode = 'cleated';
+      }
       sim.addLog(
-        `Manöverleine ${line.id}: ${cleatName(sim, fixedCleat)} → ${anchor.label} → ${cleatName(sim, workCleat)}, Holepart von Hand gehalten`,
+        `Manöverleine ${line.id}: ${cleatName(sim, fixedCleat)} → ${anchor.label} → ${cockpit ? 'Cockpit' : cleatName(sim, workCleat)}, ${
+          cockpit ? 'auf der Winsch belegt' : 'Holepart von Hand gehalten'
+        }`,
         'info',
       );
       sim.onLineAttached?.(line);
-      return { attend: line.id };
+      return cockpit ? undefined : { attend: line.id };
     },
   });
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Leinen vorbereiten (solange das Ziel noch weit weg ist)
+// ---------------------------------------------------------------------------
+/** Mindestabstand zum Ziel-Liegeplatz, ab dem noch Zeit zum Vorbereiten ist [m] */
+export const PREP_MIN_DISTANCE = 20;
+
+/** Abstand zum Ziel-Liegeplatz (Mitte der Markierung) [m]. */
+export function distanceToTarget(sim: Simulation): number {
+  const b = sim.targetBerth;
+  if (!b) return Infinity;
+  const c = b.poly.reduce((a, q) => ({ x: a.x + q.x / b.poly.length, y: a.y + q.y / b.poly.length }), { x: 0, y: 0 });
+  return Math.hypot(sim.yacht.state.pos.x - c.x, sim.yacht.state.pos.y - c.y);
+}
+
+/** Grund, warum gerade nicht vorbereitet werden kann (sonst null). */
+export function prepBlocked(sim: Simulation): string | null {
+  const d = distanceToTarget(sim);
+  return d < PREP_MIN_DISTANCE ? `Zu nah am Ziel (${d.toFixed(0)} m) – Leinen vorbereiten nur ab ${PREP_MIN_DISTANCE} m Abstand` : null;
+}
+
+const tooLate = (sim: Simulation) => {
+  const e = prepBlocked(sim);
+  return e ? `Vorbereiten abgebrochen – ${e}` : null;
+};
+
+/** Festmacher an einer Klampe belegen und klar über die Reling legen. */
+export function orderPrepare(sim: Simulation, cleat: string): string | null {
+  const blocked = prepBlocked(sim);
+  if (blocked) return blocked;
+  if (sim.lines.preparedAt(cleat)) return `An ${cleatName(sim, cleat)} liegt schon eine Leine bereit`;
+  sim.crew.order({
+    label: `Leine an ${cleatName(sim, cleat)} vorbereiten`,
+    steps: [{ at: cleatPos(sim, cleat), seconds: SOLO_SECONDS.prepare, label: `belegt Leine auf ${cleatName(sim, cleat)}, klar über die Reling`, check: () => tooLate(sim) }],
+    run: () => {
+      if (sim.lines.prepare(cleat)) sim.addLog(`Leine an ${cleatName(sim, cleat)} liegt bereit`, 'info');
+    },
+  });
+  return null;
+}
+
+/** Manöverleine vorbereiten: feste Part an `fixedCleat` belegt, Holepart an `workCleat` klar. */
+export function orderPrepareSlip(sim: Simulation, fixedCleat: string, workCleat: string): string | null {
+  const blocked = prepBlocked(sim);
+  if (blocked) return blocked;
+  if (fixedCleat === workCleat) return 'Zweite, andere Klampe wählen';
+  if (sim.lines.preparedAt(fixedCleat)) return `An ${cleatName(sim, fixedCleat)} liegt schon eine Leine bereit`;
+  if (sim.lines.slipsInUse >= MAX_SLIP_LINES) return `Beide Manöverleinen sind schon in Gebrauch (${MAX_SLIP_LINES} an Bord)`;
+  sim.crew.order({
+    label: `Manöverleine ${cleatName(sim, fixedCleat)} / ${cleatName(sim, workCleat)} vorbereiten`,
+    steps: [
+      { at: cleatPos(sim, fixedCleat), seconds: SOLO_SECONDS.prepare, label: `belegt Manöverleine auf ${cleatName(sim, fixedCleat)}`, check: () => tooLate(sim) },
+      { at: cleatPos(sim, workCleat), seconds: SOLO_SECONDS.leadSlip, label: `legt Holepart an ${cleatName(sim, workCleat)} klar`, check: () => tooLate(sim) },
+    ],
+    run: () => {
+      if (sim.lines.prepare(fixedCleat, { workCleatId: workCleat })) {
+        sim.addLog(`Manöverleine ${cleatName(sim, fixedCleat)} → ${cleatName(sim, workCleat)} liegt bereit`, 'info');
+      }
+    },
+  });
+  return null;
+}
+
+/** Holepart einer vorbereiteten Manöverleine schon ins Cockpit führen. */
+export function orderPreparedLeadAft(sim: Simulation, id: number): string | null {
+  const p = sim.lines.prepared.find((x) => x.id === id);
+  if (!p?.slip || p.slip.cockpit) return null;
+  const blocked = prepBlocked(sim);
+  if (blocked) return blocked;
+  sim.crew.order({
+    label: `Manöverleine an ${cleatName(sim, p.cleatId)} ins Cockpit führen`,
+    steps: [{ at: cleatPos(sim, p.slip.workCleatId), seconds: SOLO_SECONDS.leadAft, label: 'führt Holepart nach achtern', check: () => tooLate(sim) }],
+    run: () => {
+      const q = sim.lines.prepared.find((x) => x.id === id);
+      if (!q?.slip) return;
+      q.slip.cockpit = true;
+      sim.addLog(`Vorbereitete Manöverleine an ${cleatName(sim, q.cleatId)}: Holepart liegt im Cockpit`, 'info');
+    },
+  });
+  return null;
+}
+
+/** Vorbereitete Leine wieder wegstauen. */
+export function orderUnprepare(sim: Simulation, id: number): void {
+  const p = sim.lines.prepared.find((x) => x.id === id);
+  if (!p) return;
+  sim.crew.order({
+    label: `Leine an ${cleatName(sim, p.cleatId)} wegstauen`,
+    steps: [{ at: cleatPos(sim, p.cleatId), seconds: SOLO_SECONDS.release, label: 'staut Leine weg' }],
+    run: () => {
+      sim.lines.unprepare(id);
+      sim.addLog(`Vorbereitete Leine an ${cleatName(sim, p.cleatId)} weggestaut`, 'info');
+    },
+  });
 }
 
 /** Wo die Holepart einer Leine bedient wird. */

@@ -4,7 +4,21 @@ import { DEFAULT_LINE_SETTINGS, MAX_SLIP_LINES, type LineMode, type LineSettings
 import { KN, clamp, worldToBody, type Vec2 } from './physics/vec';
 import { BALL_FENDER, nearestHullPoint, type FenderSide } from './physics/fenders';
 import { CREW_MODE_LABEL, type CrewMode } from './sim/crew';
-import { cleatName, orderBall, orderBallRemove, orderFenders, orderLeadAft, orderLine, orderSlip, orderThrow } from './sim/orders';
+import {
+  cleatName,
+  orderBall,
+  orderBallRemove,
+  orderFenders,
+  orderLeadAft,
+  orderLine,
+  orderPrepare,
+  orderPrepareSlip,
+  orderPreparedLeadAft,
+  orderSlip,
+  orderThrow,
+  orderUnprepare,
+  prepBlocked,
+} from './sim/orders';
 import { IDLE_LEVER, NEUTRAL_ZONE } from './physics/yacht';
 import { PRESETS, SAILING_YACHT_36, cloneConfig, validateConfig, type YachtConfig } from './physics/yachtConfig';
 import { Renderer, type Interaction } from './render/renderer';
@@ -75,6 +89,8 @@ const ia: Interaction = {
   ballPreview: null,
   slipMode: false,
   slipFrom: null,
+  prepMode: null,
+  prepFrom: null,
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -181,6 +197,13 @@ window.addEventListener('keydown', (e) => {
       ia.selectedLine = null;
       setPlacingBall(false);
       setSlipMode(false);
+      setPrepMode(null);
+      break;
+    case 'j':
+      setPrepMode(ia.prepMode === 'line' ? null : 'line');
+      break;
+    case 'n':
+      setPrepMode(ia.prepMode === 'slip' ? null : 'slip');
       break;
     case 'm':
       setSlipMode(!ia.slipMode);
@@ -360,6 +383,11 @@ function handleClick(s: Vec2): void {
     return;
   }
   const p = pick(s);
+  if (ia.prepMode) {
+    if (p.cleat) prepClick(p.cleat);
+    else if (p.anchor) flash('Vorbereiten: Klampe am Boot anklicken', p.anchor.pos);
+    return;
+  }
   if (p.cleat && ia.slipFrom) {
     completeSlip(p.cleat);
     return;
@@ -373,9 +401,10 @@ function handleClick(s: Vec2): void {
       flash('Erst eine Klampe am Boot wählen', p.anchor.pos);
       return;
     }
-    if (ia.slipMode) {
-      if (sim.lines.slipCount >= MAX_SLIP_LINES) {
-        flash(`Beide Manöverleinen sind schon ausgebracht (${MAX_SLIP_LINES} an Bord)`, p.anchor.pos);
+    const ready = sim.lines.preparedAt(ia.selectedCleat);
+    if (ia.slipMode && !ready?.slip) {
+      if (sim.lines.slipsInUse >= MAX_SLIP_LINES) {
+        flash(`Beide Manöverleinen sind schon in Gebrauch (${MAX_SLIP_LINES} an Bord)`, p.anchor.pos);
         return;
       }
       // Bucht kommt über den Festpunkt – jetzt die zweite Klampe für die Holepart
@@ -383,18 +412,95 @@ function handleClick(s: Vec2): void {
       ia.selectedCleat = null;
       return;
     }
+    // vorbereitete Leine an der Klampe: nur noch werfen (Manöverleine samt Holepart)
     const err = orderThrow(sim, ia.selectedCleat, p.anchor);
     if (err) flash(err, p.anchor.pos);
-    else ia.selectedCleat = null;
+    else {
+      ia.selectedCleat = null;
+      if (ready?.slip) setSlipMode(false);
+    }
     return;
   }
   ia.selectedCleat = null;
+}
+
+function setPrepMode(mode: 'line' | 'slip' | null): void {
+  if (mode) {
+    const blocked = prepBlocked(sim);
+    if (blocked) {
+      flash(blocked, sim.yacht.state.pos);
+      mode = null;
+    }
+  }
+  ia.prepMode = mode;
+  ia.prepFrom = null;
+  if (mode) {
+    setSlipMode(false);
+    ia.selectedCleat = null;
+  }
+  $('btn-prep-line').classList.toggle('on', mode === 'line');
+  $('btn-prep-slip').classList.toggle('on', mode === 'slip');
+}
+
+/** Klick auf eine Klampe beim Vorbereiten. */
+function prepClick(cleat: string): void {
+  const at = sim.yacht.cleatWorld(cleat) ?? sim.yacht.state.pos;
+  if (ia.prepMode === 'line') {
+    const err = orderPrepare(sim, cleat);
+    if (err) flash(err, at);
+    return;
+  }
+  if (!ia.prepFrom) {
+    if (sim.lines.preparedAt(cleat)) {
+      flash(`An ${cleatName(sim, cleat)} liegt schon eine Leine bereit`, at);
+      return;
+    }
+    ia.prepFrom = cleat;
+    return;
+  }
+  const err = orderPrepareSlip(sim, ia.prepFrom, cleat);
+  if (err) {
+    flash(err, at);
+    return;
+  }
+  setPrepMode(null);
+}
+
+$('btn-prep-line').addEventListener('click', () => setPrepMode(ia.prepMode === 'line' ? null : 'line'));
+$('btn-prep-slip').addEventListener('click', () => setPrepMode(ia.prepMode === 'slip' ? null : 'slip'));
+$('prepared').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-prep]');
+  if (!b) return;
+  const id = Number(b.dataset.prep);
+  if (b.dataset.act === 'aft') {
+    const err = orderPreparedLeadAft(sim, id);
+    if (err) flash(err, sim.yacht.state.pos);
+  } else orderUnprepare(sim, id);
+  preparedSignature = '';
+});
+
+let preparedSignature = '';
+function renderPrepared(): void {
+  const list = sim.lines.prepared;
+  const sig = JSON.stringify(list);
+  if (sig === preparedSignature) return;
+  preparedSignature = sig;
+  $('prepared').innerHTML = list
+    .map((p) => {
+      const what = p.slip
+        ? `Manöverleine ${cleatName(sim, p.cleatId)} → ${p.slip.cockpit ? 'Cockpit' : cleatName(sim, p.slip.workCleatId)}`
+        : `Festmacher an ${cleatName(sim, p.cleatId)}`;
+      const aft = p.slip && !p.slip.cockpit ? `<button type="button" data-prep="${p.id}" data-act="aft" title="Holepart schon ins Cockpit führen">→ Cockpit</button>` : '';
+      return `<li><span>🪢 ${escapeHtml(what)} – bereit</span>${aft}<button type="button" data-prep="${p.id}" data-act="stow" title="Leine wieder wegstauen">wegstauen</button></li>`;
+    })
+    .join('');
 }
 
 function setSlipMode(on: boolean): void {
   ia.slipMode = on;
   ia.slipFrom = null;
   $('btn-slip').classList.toggle('on', on);
+  if (on && ia.prepMode) setPrepMode(null);
 }
 
 /** Manöverleine fertig ausbringen: Holepart auf die zweite Klampe. */
@@ -581,6 +687,7 @@ function resetUi(): void {
   ia.selectedLine = null;
   setPlacingBall(false);
   setSlipMode(false);
+  setPrepMode(null);
   setSteer(0);
   setEase(0);
   bannerShown = false;
@@ -823,8 +930,17 @@ function renderLines(): void {
     const load = Math.max(l.tension, l.slip?.tension ?? 0);
     if (bar) bar.style.width = `${Math.min(100, (load / 3000) * 100)}%`;
   }
+  renderPrepared();
   const hint = $('line-hint');
-  if (ia.slipFrom) {
+  if (ia.prepMode === 'line') {
+    hint.textContent = 'Vorbereiten: Klampe anklicken – die Leine wird dort belegt und klar über die Reling gelegt.';
+    hint.classList.add('active');
+  } else if (ia.prepMode === 'slip') {
+    hint.textContent = ia.prepFrom
+      ? `Manöverleine an ${cleatName(sim, ia.prepFrom)} – jetzt die Klampe für die Holepart anklicken.`
+      : 'Manöverleine vorbereiten: erste Klampe (feste Part) anklicken, dann die Klampe der Holepart.';
+    hint.classList.add('active');
+  } else if (ia.slipFrom) {
     hint.textContent = `Manöverleine liegt über ${ia.slipFrom.anchor.label} – jetzt die zweite Klampe für die Holepart anklicken.`;
     hint.classList.add('active');
   } else if (ia.slipMode && !ia.selectedCleat) {
@@ -832,7 +948,10 @@ function renderLines(): void {
     hint.classList.add('active');
   } else if (ia.selectedCleat) {
     const name = cleatName(sim, ia.selectedCleat!);
-    hint.textContent = `${name} gewählt – jetzt Dalbe oder Stegklampe anklicken (grün = in Wurfweite).`;
+    const ready = sim.lines.preparedAt(ia.selectedCleat!);
+    hint.textContent = ready
+      ? `${name}: ${ready.slip ? 'Manöverleine' : 'Leine'} liegt bereit – Dalbe oder Stegklampe anklicken, der Skipper muss nur noch werfen.`
+      : `${name} gewählt – jetzt Dalbe oder Stegklampe anklicken (grün = in Wurfweite).`;
     hint.classList.add('active');
   } else {
     hint.textContent = sim.lines.lines.length

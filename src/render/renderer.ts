@@ -29,6 +29,9 @@ export interface Interaction {
   slipMode: boolean;
   /** Manöverleine: erste Klampe und Festpunkt schon gewählt */
   slipFrom: { cleat: string; anchor: ShoreAnchor } | null;
+  /** Leinen vorbereiten: Festmacher oder Manöverleine (erste Klampe in prepFrom) */
+  prepMode: 'line' | 'slip' | null;
+  prepFrom: string | null;
 }
 
 interface Particle {
@@ -149,6 +152,7 @@ export class Renderer {
     this.drawWash(sim, realDt);
     this.drawYacht(sim, ia);
     this.drawFenders(sim, ia);
+    this.drawPrepared(sim, ia);
     this.drawLines(sim, ia);
     this.drawCrew(sim);
     this.drawAnchors(sim, ia);
@@ -565,6 +569,52 @@ export class Renderer {
       ctx.arc(s.x, s.y, Math.max(4, 0.3 * this.camera.scale), 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+  }
+
+  /** Vorbereitete Leinen: Bucht an der Klampe, Manöverleine an Deck zur Holepart bzw. ins Cockpit. */
+  private drawPrepared(sim: Simulation, ia: Interaction): void {
+    const ctx = this.ctx;
+    const y = sim.yacht;
+    const r = Math.max(4, 0.22 * this.camera.scale);
+    for (const p of sim.lines.prepared) {
+      const a = y.cleatWorld(p.cleatId);
+      if (!a) continue;
+      const s = this.toScreen(a);
+      if (p.slip) {
+        const end = p.slip.cockpit ? y.toWorld(sim.crew.helm) : y.cleatWorld(p.slip.workCleatId);
+        if (end) {
+          const e = this.toScreen(end);
+          ctx.strokeStyle = 'rgba(251,191,36,0.85)';
+          ctx.setLineDash([3, 3]);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y);
+          ctx.lineTo(e.x, e.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      // aufgeschossene Bucht
+      ctx.strokeStyle = p.slip ? '#fbbf24' : '#f8fafc';
+      ctx.lineWidth = 2;
+      for (const k of [1, 0.6]) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r * k, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    if (ia.prepMode === 'slip' && ia.prepFrom) {
+      const a = y.cleatWorld(ia.prepFrom);
+      if (a) {
+        const s = this.toScreen(a);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r * 1.4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }
 

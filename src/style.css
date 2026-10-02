@@ -386,6 +386,9 @@ button.primary {
   font-size: 12px;
   padding: 4px 6px;
 }
+.fender-btns + .fender-btns {
+  margin-top: 6px;
+}
 .fender-btns button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -768,4 +771,32 @@ dialog.wide {
 }
 .banner button {
   margin-left: 10px;
+}
+
+.prepared {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.prepared li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+}
+.prepared li span {
+  flex: 1;
+}
+.prepared button {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.prep-hint {
+  margin: 8px 0 4px;
 }

@@ -5,7 +5,7 @@ import { MAX_SLIP_LINES, type ShoreAnchor } from '../physics/lines';
 import { dist } from '../physics/vec';
 import { SAILING_YACHT_36 } from '../physics/yachtConfig';
 import type { CrewMode } from './crew';
-import { orderLeadAft, orderLine, orderSlip, orderThrow } from './orders';
+import { orderLeadAft, orderLine, orderPrepare, orderPrepareSlip, orderPreparedLeadAft, orderSlip, orderThrow } from './orders';
 import { Simulation } from './simulation';
 
 const CALM = { ...DEFAULT_ENV, windSpeedKn: 0, gustiness: 0, currentSpeedKn: 0 };
@@ -170,5 +170,75 @@ describe('Zwei Manöverleinen, Lenken aus dem Cockpit', () => {
     });
     expect(left).toBe(false);
     expect(sim.lines.lines[0].mode).toBe('ease');
+  });
+});
+
+describe('Leinen vorbereiten', () => {
+  /** Boot weit vor dem Ziel (Lücke A) parken, später an den Steg versetzen. */
+  const far = (sim: Simulation) => {
+    sim.yacht.state.pos = { x: -10, y: -12 };
+  };
+  const alongside = (sim: Simulation) => {
+    const st = sim.yacht.state;
+    st.pos = { x: 29, y: -2.05 };
+    st.psi = Math.PI / 2;
+    st.u = st.v = st.r = 0;
+  };
+
+  it('nur solange das Ziel noch weit genug weg ist', () => {
+    const sim = setup('solo');
+    expect(orderPrepare(sim, 'bow-p')).toMatch(/Zu nah am Ziel/);
+    far(sim);
+    expect(orderPrepare(sim, 'bow-p')).toBeNull();
+    // kommt das Boot während der Arbeit zu nah, bricht der Skipper ab
+    runUntil(sim, () => !sim.crew.atHelm);
+    alongside(sim);
+    runUntil(sim, () => !sim.crew.busy);
+    expect(sim.lines.prepared).toHaveLength(0);
+    expect(sim.log.some((e) => e.text.includes('Vorbereiten abgebrochen'))).toBe(true);
+  });
+
+  it('Einhand: vorbereitete Bugleine ist viel schneller geworfen', () => {
+    const throwTime = (prepared: boolean) => {
+      const sim = setup('solo');
+      if (prepared) {
+        far(sim);
+        expect(orderPrepare(sim, 'bow-p')).toBeNull();
+        runUntil(sim, () => !sim.crew.busy && sim.crew.atHelm, 60);
+        expect(sim.lines.preparedAt('bow-p')).toBeDefined();
+        alongside(sim);
+      }
+      expect(orderThrow(sim, 'bow-p', bollardAt(sim, 'bow-p'))).toBeNull();
+      const t = runUntil(sim, () => sim.lines.lines.length > 0);
+      expect(sim.lines.prepared).toHaveLength(0);
+      return t;
+    };
+    const ready = throwTime(true);
+    const cold = throwTime(false);
+    expect(ready).toBeLessThan(cold - 2);
+  });
+
+  it('Einhand: vorbereitete Manöverleine im Cockpit – werfen, und sie liegt auf der Winsch', () => {
+    const sim = setup('solo');
+    far(sim);
+    expect(orderPrepareSlip(sim, 'stern-p', 'mid-p')).toBeNull();
+    runUntil(sim, () => !sim.crew.busy, 60);
+    const prep = sim.lines.preparedAt('stern-p')!;
+    expect(prep.slip).toEqual({ workCleatId: 'mid-p', cockpit: false });
+    expect(orderPreparedLeadAft(sim, prep.id)).toBeNull();
+    runUntil(sim, () => !sim.crew.busy && sim.crew.atHelm, 60);
+    expect(prep.slip!.cockpit).toBe(true);
+    // zählt als Manöverleine in Gebrauch
+    expect(sim.lines.slipsInUse).toBe(1);
+    alongside(sim);
+    // normaler Wurf von der Klampe nimmt die vorbereitete Manöverleine
+    expect(orderThrow(sim, 'stern-p', bollardAt(sim, 'stern-p'))).toBeNull();
+    runUntil(sim, () => sim.lines.lines.length > 0);
+    const l = sim.lines.lines[0];
+    expect(l.slip?.cleatId).toBe('stern-p');
+    expect(l.cockpit).toBe(true);
+    expect(l.mode).toBe('cleated');
+    expect(sim.crew.attending).toBeNull();
+    expect(sim.lines.prepared).toHaveLength(0);
   });
 });
