@@ -463,7 +463,7 @@ export const TASKS: TaskDef[] = [
     goal: { kind: 'moor', berth: 'box-n12', orientation: 'sternToPier' },
     env: { windSpeedKn: 8, windFromDeg: 270, gustiness: 0.2, windShiftDeg: 8 },
     briefing:
-      'Unterwegs beide Manöverleinen vorbereiten (N) und schon ins Cockpit führen. An den Dalben nur noch werfen, dann rückwärts in die Box und mit den Reglern dosiert fieren: So hältst du den Bug gegen den Seitenwind in der Spur, ohne das Ruder zu verlassen.',
+      'Klassisches Einhand-Manöver: Unterwegs an beiden Achterklampen je eine Manöverleine vorbereiten (N, zweimal dieselbe Klampe) – doppelt über die Klampe, Holepart direkt im Cockpit. Rückwärts zwischen die Dalben, vom Cockpit aus über die Dalben werfen, dann mit den Reglern dosiert fieren: bremsen und gegen den Seitenwind lenken, ohne das Ruder zu verlassen. Am Steg festmachen, zum Schluss die Leinen zu den Dalben belegen.',
     tags: ['Box', 'Einhand', 'Manöverleine', 'Wind'],
   },
   {

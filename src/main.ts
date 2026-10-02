@@ -937,11 +937,11 @@ function renderLines(): void {
     hint.classList.add('active');
   } else if (ia.prepMode === 'slip') {
     hint.textContent = ia.prepFrom
-      ? `Manöverleine an ${cleatName(sim, ia.prepFrom)} – jetzt die Klampe für die Holepart anklicken.`
+      ? `Manöverleine an ${cleatName(sim, ia.prepFrom)} – jetzt die Klampe für die Holepart anklicken (dieselbe Klampe nochmal = doppelt über die Klampe, direkt ins Cockpit).`
       : 'Manöverleine vorbereiten: erste Klampe (feste Part) anklicken, dann die Klampe der Holepart.';
     hint.classList.add('active');
   } else if (ia.slipFrom) {
-    hint.textContent = `Manöverleine liegt über ${ia.slipFrom.anchor.label} – jetzt die zweite Klampe für die Holepart anklicken.`;
+    hint.textContent = `Manöverleine liegt über ${ia.slipFrom.anchor.label} – jetzt die Klampe für die Holepart anklicken; dieselbe Klampe nochmal = doppelt über die Klampe direkt ins Cockpit (z. B. Achterklampe beim Rückwärts-Einparken).`;
     hint.classList.add('active');
   } else if (ia.slipMode && !ia.selectedCleat) {
     hint.textContent = 'Manöverleine: erste Klampe (feste Part) anklicken, dann Dalbe oder Stegklampe, dann die zweite Klampe.';
