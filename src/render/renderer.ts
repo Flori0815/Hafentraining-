@@ -327,12 +327,23 @@ export class Renderer {
         ctx.strokeStyle = C.plank;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        for (let x = Math.ceil(x0 / 0.6) * 0.6; x < x1; x += 0.6) {
-          const a = this.toScreen({ x, y: y0 });
-          const b = this.toScreen({ x, y: y1 });
-          if (a.x < -2 || a.x > this.width + 2) continue;
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+        if (x1 - x0 >= y1 - y0) {
+          // Steg in Ost-West-Richtung: Planken quer (Nord-Süd)
+          for (let x = Math.ceil(x0 / 0.6) * 0.6; x < x1; x += 0.6) {
+            const a = this.toScreen({ x, y: y0 });
+            const b = this.toScreen({ x, y: y1 });
+            if (a.x < -2 || a.x > this.width + 2) continue;
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+          }
+        } else {
+          for (let y = Math.ceil(y0 / 0.6) * 0.6; y < y1; y += 0.6) {
+            const a = this.toScreen({ x: x0, y });
+            const b = this.toScreen({ x: x1, y });
+            if (a.y < -2 || a.y > this.height + 2) continue;
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+          }
         }
         ctx.stroke();
       }

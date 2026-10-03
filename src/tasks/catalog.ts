@@ -9,6 +9,12 @@
  *    Steg (y = −51). Freie Boxen: Nord 3, 7, 10, 12, 16 · Süd 2, 8, 13, 17.
  *  - Längsseits: Steg y = 0, Lücke A x 20…38, Lücke B x 62…76, Poller k bei
  *    x = −4 + 3·(k−1). Gegenüber Boxen (Dalben y = −24,5), frei: Süd 4, 11, 18.
+ *  - Enge Gasse: Boxen 4,0 × 12,5 m, Fahrwasser y −27,5 … −12,5 (15 m).
+ *    Frei: Nord 4, 9, 14 · Süd 6, 12.
+ *  - Seitengassen: Hauptfahrwasser y −22 … 0 mit Südboxen (frei s3, s8, s15,
+ *    s22). Gasse 1 (16 m, x ≈ 12) frei: g1-n3, g1-n6 (West), g1-s2 (Ost).
+ *    Gasse 2 (12 m, x ≈ 74, Wenden praktisch unmöglich) frei: g2-n2, g2-n5 (West),
+ *    g2-s4 (Ost). Boxennummern zählen von der Gassenmündung nach Norden.
  */
 import type { TaskDef } from './types';
 import { zoneRect } from './types';
@@ -16,6 +22,8 @@ import { zoneRect } from './types';
 /** Hafenausfahrt (Westende der Gasse) als Zielzone beim Ablegen */
 const EXIT_BOXENGASSE = zoneRect(-42, -35, -25, -16);
 const EXIT_LAENGSSEITS = zoneRect(-42, -22, -25, -6);
+const EXIT_ENGE = zoneRect(-37, -26, -24, -14);
+const EXIT_SEITEN = zoneRect(-42, -20, -28, -2);
 
 export const TASKS: TaskDef[] = [
   // ------------------------------------------------------------ 1 Einsteiger
@@ -553,6 +561,148 @@ export const TASKS: TaskDef[] = [
     briefing:
       'Starker, böiger Wind schräg von achtern. Beide Heckleinen als Manöverleinen ins Cockpit, Bugleinen los und sofort zurück ans Ruder. Rückwärts raus und mit dem Regler die Luv-Leine länger halten.',
     tags: ['Box', 'Einhand', 'Ablegen', 'Starkwind'],
+  },
+  // ======================================================= Enge Gassen
+  {
+    id: 'eng-box-vorwaerts',
+    title: 'Enge Gasse: vorwärts in die Box',
+    difficulty: 3,
+    harbor: 'enge-gasse',
+    goal: { kind: 'moor', berth: 'box-n9', orientation: 'bowToPier' },
+    env: { windSpeedKn: 6, windFromDeg: 200, gustiness: 0.15, windShiftDeg: 6 },
+    briefing:
+      'Nur 15 m Fahrwasser und schmale Boxen. Weit außen an der gegenüberliegenden Dalbenreihe halten, früh einlenken – und den Radeffekt beim Aufstoppen einplanen, sonst steht das Heck am Nachbarn.',
+    tags: ['Box', 'Enge Gasse'],
+  },
+  {
+    id: 'eng-rueckwaerts-seitenwind',
+    title: 'Enge Gasse: rückwärts bei Seitenwind',
+    difficulty: 4,
+    harbor: 'enge-gasse',
+    goal: { kind: 'moor', berth: 'box-s6', orientation: 'sternToPier' },
+    env: { windSpeedKn: 12, windFromDeg: 270, gustiness: 0.3, windShiftDeg: 10 },
+    briefing:
+      'Der Wind kommt von der Einfahrt. In der engen Gasse vorher drehen ist kaum möglich: Schon vor der Gasse wenden und die ganze Strecke rückwärts fahren. Bug in den Wind halten, Luv-Dalbe zuerst belegen.',
+    tags: ['Box', 'Enge Gasse', 'Rückwärts', 'Wind'],
+  },
+  {
+    id: 'eng-ablegen',
+    title: 'Enge Gasse: rückwärts raus und drehen',
+    difficulty: 3,
+    harbor: 'enge-gasse',
+    goal: { kind: 'depart', berth: 'box-n9', zone: EXIT_ENGE, zoneLabel: 'Gasseneinfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 6, windFromDeg: 200, gustiness: 0.15, windShiftDeg: 6 },
+    briefing:
+      'Rückwärts aus der Box und in 15 m Fahrwasser auf der Stelle drehen: Radeffekt nutzen – rückwärts zieht das Heck nach Backbord, dann voraus mit Ruder hart und kurzen Gasstößen.',
+    tags: ['Box', 'Enge Gasse', 'Ablegen', 'Radeffekt'],
+  },
+  {
+    id: 'eng-ablegen-boeig',
+    title: 'Enge Gasse: Ablegen in Böen',
+    difficulty: 4,
+    harbor: 'enge-gasse',
+    goal: { kind: 'depart', berth: 'box-s12', zone: EXIT_ENGE, zoneLabel: 'Gasseneinfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 14, windFromDeg: 240, gustiness: 0.4, windShiftDeg: 12 },
+    briefing:
+      'Böiger Wind schräg in die Gasse, kaum Platz zum Drehen. Überlege, ob du in der Gasse drehst oder die ganze Strecke rückwärts zur Einfahrt fährst – der Bug fällt in Böen schnell ab.',
+    tags: ['Box', 'Enge Gasse', 'Ablegen', 'Wind'],
+  },
+  // =================================================== Hafen mit Seitengassen
+  {
+    id: 'seiten-g1-vorwaerts',
+    title: 'Seitengasse 1: vorwärts in die Box',
+    difficulty: 3,
+    harbor: 'seitengassen',
+    goal: { kind: 'moor', berth: 'box-g1-n3', orientation: 'bowToPier' },
+    env: { windSpeedKn: 6, windFromDeg: 200, gustiness: 0.15, windShiftDeg: 6 },
+    briefing:
+      'Vom Hauptfahrwasser nach links in Gasse 1 abbiegen (16 m breit), dann nach links in die Box. Weit ausholen: Die Kurve in die Gasse und die Kurve in die Box folgen dicht aufeinander.',
+    tags: ['Box', 'Seitengasse'],
+  },
+  {
+    id: 'seiten-g2-rueckwaerts',
+    title: 'Seitengasse 2: rückwärts hinein',
+    difficulty: 4,
+    harbor: 'seitengassen',
+    goal: { kind: 'moor', berth: 'box-g2-n5', orientation: 'sternToPier' },
+    env: { windSpeedKn: 8, windFromDeg: 180, gustiness: 0.2, windShiftDeg: 8 },
+    briefing:
+      'Gasse 2 ist nur 12 m breit, die Box liegt tief drin – drehen ist dort praktisch unmöglich. Also schon im Hauptfahrwasser wenden und die ganze Gasse rückwärts hineinfahren. Der Radeffekt zieht das Heck nach Backbord: vorher etwas nach Steuerbord versetzt ansetzen.',
+    tags: ['Box', 'Seitengasse', 'Rückwärts', 'Entscheidung'],
+  },
+  {
+    id: 'seiten-g2-wahl',
+    title: 'Seitengasse 2: du entscheidest',
+    difficulty: 5,
+    harbor: 'seitengassen',
+    goal: { kind: 'moor', berth: 'box-g2-s4' },
+    env: { windSpeedKn: 15, windFromDeg: 270, gustiness: 0.45, windShiftDeg: 12 },
+    briefing:
+      'Böiger Wind von West, Gasse 2 ist eng und endet an einer Mauer. Vorwärts oder rückwärts in die Box – entscheide vor der Abzweigung, in der Gasse gibt es kaum ein Zurück. Tipp: Vorwärts hinein heißt später rückwärts die ganze Gasse hinaus.',
+    tags: ['Box', 'Seitengasse', 'Entscheidung', 'Starkwind'],
+  },
+  {
+    id: 'seiten-einhand-g1',
+    title: 'Einhand rückwärts in Seitengasse 1',
+    difficulty: 5,
+    harbor: 'seitengassen',
+    crew: 'solo',
+    goal: { kind: 'moor', berth: 'box-g1-n6', orientation: 'sternToPier' },
+    env: { windSpeedKn: 10, windFromDeg: 200, gustiness: 0.3, windShiftDeg: 8 },
+    briefing:
+      'Allein, rückwärts, ganz hinten in der Gasse. Im Hauptfahrwasser beide Achterklampen als Manöverleinen vorbereiten (doppelt über die Klampe ins Cockpit), dann rückwärts in die Gasse, über die Dalben werfen und mit den Reglern bremsen und lenken.',
+    tags: ['Box', 'Seitengasse', 'Einhand', 'Manöverleine'],
+  },
+  {
+    id: 'seiten-ablegen-g1',
+    title: 'Aus Seitengasse 1 ablegen',
+    difficulty: 3,
+    harbor: 'seitengassen',
+    goal: { kind: 'depart', berth: 'box-g1-s2', zone: EXIT_SEITEN, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 6, windFromDeg: 200, gustiness: 0.15, windShiftDeg: 6 },
+    briefing:
+      'Rückwärts aus der Box, in der 16 m breiten Gasse drehen oder rückwärts bis ins Hauptfahrwasser – beides geht. Dann nach Westen zur Ausfahrt.',
+    tags: ['Box', 'Seitengasse', 'Ablegen'],
+  },
+  {
+    id: 'seiten-ablegen-g2-heck',
+    title: 'Aus Seitengasse 2 vorwärts raus',
+    difficulty: 3,
+    harbor: 'seitengassen',
+    goal: { kind: 'depart', berth: 'box-g2-n5', zone: EXIT_SEITEN, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'sternToPier',
+    env: { windSpeedKn: 8, windFromDeg: 200, gustiness: 0.2, windShiftDeg: 8 },
+    briefing:
+      'Wer rückwärts hineingefahren ist, kommt bequem vorwärts heraus: Dalbenleinen los, voraus aus der Box und gleich in Richtung Mündung einlenken – in der 12 m breiten Gasse ist für eine weite Kurve kein Platz.',
+    tags: ['Box', 'Seitengasse', 'Ablegen'],
+  },
+  {
+    id: 'seiten-ablegen-g2-bug',
+    title: 'Aus Seitengasse 2 rückwärts hinaus',
+    difficulty: 4,
+    harbor: 'seitengassen',
+    goal: { kind: 'depart', berth: 'box-g2-n2', zone: EXIT_SEITEN, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 8, windFromDeg: 240, gustiness: 0.2, windShiftDeg: 8 },
+    briefing:
+      'Bug zum Steg in der engen Gasse: Drehen geht dort praktisch nicht, also rückwärts aus der Box, das Heck Richtung Mündung schwenken und rückwärts bis ins Hauptfahrwasser. Erst dort drehen.',
+    tags: ['Box', 'Seitengasse', 'Ablegen', 'Rückwärts'],
+  },
+  {
+    id: 'seiten-ablegen-einhand',
+    title: 'Einhand aus Seitengasse 2 bei Böen',
+    difficulty: 5,
+    harbor: 'seitengassen',
+    crew: 'solo',
+    goal: { kind: 'depart', berth: 'box-g2-s4', zone: EXIT_SEITEN, zoneLabel: 'Hafenausfahrt (West)' },
+    startMoored: 'bowToPier',
+    env: { windSpeedKn: 12, windFromDeg: 240, gustiness: 0.35, windShiftDeg: 10 },
+    briefing:
+      'Allein in der engen Gasse, Böen von achtern. Heckleinen auf Slip ins Cockpit legen, Bugleinen los, zurück ans Ruder. Rückwärts raus, die Slip-Leinen erst einholen, wenn das Boot sauber in der Gasse liegt – dann rückwärts bis ins Hauptfahrwasser.',
+    tags: ['Box', 'Seitengasse', 'Einhand', 'Ablegen'],
   },
 ];
 
