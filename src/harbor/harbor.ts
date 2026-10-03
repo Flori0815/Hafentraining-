@@ -104,15 +104,31 @@ const emptyParts = (): Parts => ({ solids: [], piles: [], anchors: [], berths: [
  */
 function addBoxRow(
   p: Parts,
-  opts: { side: 'n' | 's'; pierY: number; x0: number; nBoxes: number; boxWidth: number; boxLength: number; occupancy: number[] },
+  opts: {
+    side: 'n' | 's';
+    pierY: number;
+    x0: number;
+    nBoxes: number;
+    boxWidth: number;
+    boxLength: number;
+    occupancy: number[];
+    /** Präfix für IDs, wenn ein Hafen mehrere Gassen hat (z. B. 'g1-') */
+    idPrefix?: string;
+    /** Bezeichnungen: Name der Reihe (Standard Nord/Süd) und der Box-Enden (Standard W/O) */
+    rowName?: string;
+    ends?: [string, string];
+  },
 ): void {
   const { side, pierY, x0, nBoxes, boxWidth, boxLength, occupancy } = opts;
+  const pre = opts.idPrefix ?? '';
+  const rowName = opts.rowName ?? (side === 'n' ? 'Nord' : 'Süd');
+  const [endA, endB] = opts.ends ?? ['W', 'O'];
   const dir = side === 'n' ? 1 : -1; // Richtung zum Steg
   const pileY = pierY - dir * boxLength;
-  const S = side.toUpperCase();
+  const S = opts.rowName ? `${rowName} ` : side.toUpperCase();
   for (let i = 0; i <= nBoxes; i++) {
     const x = x0 + i * boxWidth;
-    const id = `pile-${side}${i}`;
+    const id = `pile-${pre}${side}${i}`;
     p.piles.push({ id, pos: { x, y: pileY }, radius: 0.16 });
     p.anchors.push({ id, kind: 'pile', pos: { x, y: pileY }, label: `Dalbe ${S}${i}` });
   }
@@ -120,21 +136,21 @@ function addBoxRow(
     const xa = x0 + i * boxWidth;
     const xb = xa + boxWidth;
     const num = i + 1;
-    const pa = `cleat-${side}${num}a`;
-    const pb = `cleat-${side}${num}b`;
+    const pa = `cleat-${pre}${side}${num}a`;
+    const pb = `cleat-${pre}${side}${num}b`;
     // Klampen auf dem Steg, 0.35 m hinter der Kante
-    p.anchors.push({ id: pa, kind: 'bollard', pos: { x: xa + 0.55, y: pierY + dir * 0.35 }, label: `Klampe ${S}${num} W` });
-    p.anchors.push({ id: pb, kind: 'bollard', pos: { x: xb - 0.55, y: pierY + dir * 0.35 }, label: `Klampe ${S}${num} O` });
+    p.anchors.push({ id: pa, kind: 'bollard', pos: { x: xa + 0.55, y: pierY + dir * 0.35 }, label: `Klampe ${S}${num} ${endA}` });
+    p.anchors.push({ id: pb, kind: 'bollard', pos: { x: xb - 0.55, y: pierY + dir * 0.35 }, label: `Klampe ${S}${num} ${endB}` });
     const occupied = occupancy[i] === 1;
     p.berths.push({
-      id: `box-${side}${num}`,
-      label: `Box ${side === 'n' ? 'Nord' : 'Süd'} ${num}`,
+      id: `box-${pre}${side}${num}`,
+      label: `Box ${rowName} ${num}`,
       kind: 'box',
       poly: rect(xa, Math.min(pierY, pileY), xb, Math.max(pierY, pileY)),
       pierDir: { x: 0, y: dir },
       requirements: [
         { role: 'pier', label: 'Leine zum Steg', count: 2, anchors: [pa, pb] },
-        { role: 'pile', label: 'Leine zu den Dalben', count: 2, anchors: [`pile-${side}${i}`, `pile-${side}${i + 1}`] },
+        { role: 'pile', label: 'Leine zu den Dalben', count: 2, anchors: [`pile-${pre}${side}${i}`, `pile-${pre}${side}${i + 1}`] },
       ],
       occupied,
     });
@@ -222,6 +238,23 @@ function addAlongsideRow(
   }
 }
 
+/**
+ * Teile, die in einem lokalen Koordinatensystem gebaut wurden, um 90° gegen
+ * den Uhrzeigersinn drehen (lokales +x zeigt dann nach Norden) und nach
+ * `origin` verschieben; in `into` übernehmen. So entstehen Seitengassen,
+ * die nach Norden abzweigen.
+ */
+function mergeRotated(into: Parts, part: Parts, origin: Vec2): void {
+  const T = (q: Vec2): Vec2 => ({ x: origin.x - q.y, y: origin.y + q.x });
+  const R = (q: Vec2): Vec2 => ({ x: -q.y, y: q.x });
+  into.solids.push(...part.solids.map((o) => ({ ...o, poly: o.poly.map(T) })));
+  into.piles.push(...part.piles.map((o) => ({ ...o, pos: T(o.pos) })));
+  into.anchors.push(...part.anchors.map((o) => ({ ...o, pos: T(o.pos) })));
+  into.berths.push(...part.berths.map((o) => ({ ...o, poly: o.poly.map(T), pierDir: R(o.pierDir) })));
+  // Kurs ist rechtweisend (im Uhrzeigersinn): Drehung gegen den Uhrzeigersinn zieht 90° ab
+  into.boats.push(...part.boats.map((o) => ({ ...o, pos: T(o.pos), headingDeg: (o.headingDeg + 270) % 360 })));
+}
+
 function finish(p: Parts): void {
   p.boats.forEach((b, k) => p.solids.push({ id: `boat-${k}`, kind: 'boat', poly: boatOutline(b) }));
 }
@@ -306,6 +339,109 @@ export function buildLaengsseits(): Harbor {
   };
 }
 
+/**
+ * Enge Boxengasse: wie die Boxengasse, aber nur 15 m Fahrwasser, kürzere
+ * und schmalere Boxen, dichter belegt. Zum Drehen bleibt kaum Platz.
+ */
+export function buildEngeGasse(): Harbor {
+  const boxWidth = 4.0;
+  const boxLength = 12.5;
+  const fairway = 15;
+  const nBoxes = 18;
+  const northPier = 0;
+  const southPier = -(2 * boxLength + fairway);
+  const xEnd = nBoxes * boxWidth;
+  const p = emptyParts();
+  p.solids.push(
+    { id: 'pier-n', kind: 'pier', poly: rect(-40, northPier, xEnd + 4, northPier + 3) },
+    { id: 'pier-s', kind: 'pier', poly: rect(-40, southPier - 3, xEnd + 4, southPier) },
+    { id: 'quay-e', kind: 'wall', poly: rect(xEnd + 4, southPier - 3, xEnd + 8, northPier + 3) },
+  );
+  addBoxRow(p, { side: 'n', pierY: northPier, x0: 0, nBoxes, boxWidth, boxLength, occupancy: [1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1] });
+  addBoxRow(p, { side: 's', pierY: southPier, x0: 0, nBoxes, boxWidth, boxLength, occupancy: [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1] });
+  finish(p);
+  return {
+    id: 'enge-gasse',
+    name: 'Enge Boxengasse',
+    description: 'Boxen 4,0 m × 12,5 m, nur 15 m Fahrwasser, dicht belegt. Einfahrt von Westen, hinten eine Kaimauer – Wenden wird eng.',
+    bounds: { minX: -40, minY: southPier - 3, maxX: xEnd + 8, maxY: northPier + 3 },
+    ...p,
+    start: { pos: { x: -28, y: southPier / 2 }, headingDeg: 90, speedKn: 1.5 },
+    defaultTarget: 'box-n9',
+  };
+}
+
+/**
+ * Hafen mit Seitengassen: ein Hauptfahrwasser (Ost–West) mit einer
+ * Boxenreihe im Süden; nach Norden zweigen zwei Sackgassen mit Boxen auf
+ * beiden Seiten ab – Gasse 1 mit 16 m, Gasse 2 mit nur 12 m Fahrwasser. In
+ * Gasse 2 kann eine 36-Fuß-Yacht praktisch nicht wenden: Vorher
+ * entscheiden, ob vorwärts oder rückwärts hinein.
+ */
+export function buildSeitengassen(): Harbor {
+  const boxWidth = 4.0;
+  const boxLength = 12.5;
+  const pierW = 3;
+  const channelSouth = -22; // Dalbenreihe der Südboxen = Südkante des Hauptfahrwassers
+  const xMin = -45;
+  const xMax = 112;
+  const p = emptyParts();
+
+  // Südboxen am Hauptfahrwasser
+  const southPier = channelSouth - boxLength;
+  addBoxRow(p, {
+    side: 's',
+    pierY: southPier,
+    x0: -8,
+    nBoxes: 28,
+    boxWidth,
+    boxLength,
+    occupancy: [1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1],
+  });
+  p.solids.push({ id: 'pier-s', kind: 'pier', poly: rect(xMin, southPier - pierW, xMax, southPier) });
+
+  // Seitengassen: lokal gebaut (x = in die Gasse hinein), dann nach Norden gedreht
+  const nAlley = 6;
+  const depth = 2 + nAlley * boxWidth + 1; // bis zur Mauer am Ende
+  const alleys = [
+    { n: 1, cx: 12, fairway: 16, occW: [1, 1, 0, 1, 1, 0], occE: [1, 0, 1, 1, 1, 1] },
+    { n: 2, cx: 74, fairway: 12, occW: [1, 0, 1, 1, 0, 1], occE: [1, 1, 1, 0, 1, 1] },
+  ];
+  const half = (f: number) => f / 2 + boxLength;
+  for (const a of alleys) {
+    const loc = emptyParts();
+    const h = half(a.fairway);
+    const common = { x0: 2, nBoxes: nAlley, boxWidth, boxLength, idPrefix: `g${a.n}-`, ends: ['S', 'N'] as [string, string] };
+    // lokal 'n' (Steg bei +y) liegt nach der Drehung im Westen, 's' im Osten
+    addBoxRow(loc, { ...common, side: 'n', pierY: h, occupancy: a.occW, rowName: `G${a.n} West` });
+    addBoxRow(loc, { ...common, side: 's', pierY: -h, occupancy: a.occE, rowName: `G${a.n} Ost` });
+    loc.solids.push(
+      { id: `g${a.n}-pier-w`, kind: 'pier', poly: rect(0, h, depth + pierW, h + pierW) },
+      { id: `g${a.n}-pier-e`, kind: 'pier', poly: rect(0, -h - pierW, depth + pierW, -h) },
+      { id: `g${a.n}-wall`, kind: 'wall', poly: rect(depth, -h, depth + pierW, h) },
+    );
+    mergeRotated(p, loc, { x: a.cx, y: 0 });
+  }
+  // Nordkante des Hauptfahrwassers zwischen den Gassen
+  const edges = alleys.map((a) => [a.cx - half(a.fairway) - pierW, a.cx + half(a.fairway) + pierW]);
+  p.solids.push(
+    { id: 'quay-n1', kind: 'wall', poly: rect(xMin, 0, edges[0][0], pierW) },
+    { id: 'quay-n2', kind: 'wall', poly: rect(edges[0][1], 0, edges[1][0], pierW) },
+    { id: 'quay-n3', kind: 'wall', poly: rect(edges[1][1], 0, xMax, pierW) },
+    { id: 'quay-e', kind: 'wall', poly: rect(xMax, southPier - pierW, xMax + 4, pierW) },
+  );
+  finish(p);
+  return {
+    id: 'seitengassen',
+    name: 'Hafen mit Seitengassen',
+    description: 'Hauptfahrwasser mit Südboxen; zwei Sackgassen zweigen nach Norden ab (16 m und 12 m breit). In Gasse 2 kann man praktisch nicht wenden – vorher entscheiden: vorwärts oder rückwärts hinein.',
+    bounds: { minX: xMin, minY: southPier - pierW, maxX: xMax + 4, maxY: depth + pierW },
+    ...p,
+    start: { pos: { x: -32, y: channelSouth / 2 }, headingDeg: 90, speedKn: 1.5 },
+    defaultTarget: 'box-g1-n3',
+  };
+}
+
 export interface Scenario {
   id: string;
   name: string;
@@ -315,6 +451,8 @@ export interface Scenario {
 export const SCENARIOS: Scenario[] = [
   { id: 'boxengasse', name: 'Boxengasse mit Dalben', build: buildBoxengasse },
   { id: 'laengsseits', name: 'Längsseits in der Gasse', build: buildLaengsseits },
+  { id: 'enge-gasse', name: 'Enge Boxengasse', build: buildEngeGasse },
+  { id: 'seitengassen', name: 'Hafen mit Seitengassen', build: buildSeitengassen },
 ];
 
 export function buildScenario(id: string): Harbor {

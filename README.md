@@ -94,8 +94,8 @@ das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
 Maus/Touch: Ziehen verschiebt die Karte, Mausrad/Pinch zoomt. Gashebel und
 Ruder gibt es auch als Schieberegler (mobil bedienbar).
 
-**Aufgaben** (Dialog „📋 Aufgaben“): 48 Aufgaben – je 24 zum Anlegen und
-Ablegen, davon 10 für Einhandsegler – in fünf Schwierigkeitsstufen
+**Aufgaben** (Dialog „📋 Aufgaben“): 60 Aufgaben – je 30 zum Anlegen und
+Ablegen, davon 12 für Einhandsegler – in fünf Schwierigkeitsstufen
 (●○○○○ Einsteiger … ●●●●● Experte), filterbar nach Art, Stufe und Einhand, mit Wind, Böen,
 Strömung, Ausrichtungs-Vorgaben (rückwärts in die Box, Steuerbord längsseits)
 und Langkieler. Jede Aufgabe hat eine Einweisung; Bestleistung und Fortschritt
@@ -111,6 +111,8 @@ und was noch fehlt (z. B. „Vorspring belegt & stramm 0/1 – hängt durch“,
 |---|---|---|
 | Boxengasse mit Dalben | freie Boxen 4,2 m × 13,5 m | je 2 zum Steg und zu den Dalben |
 | Längsseits in der Gasse | Lücke A 18 m (leicht), Lücke B 14 m (schwer), freie Boxen gegenüber | Vorleine, Achterleine, Vorspring, Achterspring |
+| Enge Boxengasse | Boxen 4,0 m × 12,5 m, nur 15 m Fahrwasser, dicht belegt | je 2 zum Steg und zu den Dalben |
+| Hafen mit Seitengassen | Südboxen am Hauptfahrwasser; zwei Sackgassen nach Norden (16 m und 12 m breit) – in Gasse 2 praktisch kein Wenden, also vorher entscheiden: vorwärts oder rückwärts hinein | je 2 zum Steg und zu den Dalben |
 
 Längsseits wird die Aufgabe jeder Leine aus der Geometrie erkannt: Klampe im
 Vor-/Achterschiff und ob der Poller vor oder hinter der Klampe liegt.
@@ -193,8 +195,9 @@ Start und grundsätzliche Lösbarkeit (ein Musterskipper legt korrekt an bzw.
 ab). Eine fehlerhafte Aufgabe fällt sofort auf.
 
 **Hafen:** Builder-Funktion in `src/harbor/harbor.ts` aus den Bausteinen
-`addBoxRow` (Boxen mit Dalben) und `addAlongsideRow` (Längsseits-Steg mit
-Lücken) oder eigenen Polygonen; in `SCENARIOS` registrieren. Liegeplätze
+`addBoxRow` (Boxen mit Dalben, mit `idPrefix` mehrfach je Hafen) und
+`addAlongsideRow` (Längsseits-Steg mit Lücken) oder eigenen Polygonen;
+`mergeRotated` dreht lokal gebaute Teile (z. B. eine Seitengasse) nach Norden; in `SCENARIOS` registrieren. Liegeplätze
 bringen ihre Leinen-Anforderungen und die Richtung zum Steg (`pierDir`) mit.
 
 ## Roadmap
