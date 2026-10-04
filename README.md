@@ -112,6 +112,7 @@ sind daraus abgeleitet (nicht veröffentlicht):
 | Jeanneau Sun Odyssey 349 | 9,97 m | Flosse / Doppelruder / Saildrive |
 | Hallberg-Rassy 352 | 10,59 m | Flosse / Skeg / Welle |
 | Westsail 32 | 9,75 m | Langkiel / am Kiel / Welle |
+| Dehler 37 CWS (1997) | 11,20 m | Flosse / Spaten / Saildrive (je nach Boot auch Welle) |
 | Hanse 388 | 11,40 m | Flosse / Spaten / Saildrive |
 | Hallberg-Rassy 40C | 12,33 m | Flosse / Doppelruder / Welle |
 | Beneteau Oceanis 46.1 | 13,65 m | Flosse / Doppelruder / Saildrive, Bugstrahlruder |

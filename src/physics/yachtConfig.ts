@@ -307,6 +307,8 @@ export const PRODUCTION_YACHTS: YachtConfig[] = [
   productionYacht({ id: 'hr-352', name: 'Hallberg-Rassy 352', loa: 10.59, lwl: 8.71, beam: 3.38, displacement: 6700, draft: 1.68, keel: 'fin', rudder: 'skeg', arrangement: 'single', powerKw: 22, drive: 'shaft', classic: true }),
   // Westsail 32 (1971–1980): Langkieler, Ruder am Kiel, Welle
   productionYacht({ id: 'westsail-32', name: 'Westsail 32 (Langkiel)', loa: 9.75, lwl: 8.38, beam: 3.35, displacement: 8850, draft: 1.52, keel: 'long', rudder: 'keelHung', arrangement: 'single', powerKw: 18, drive: 'shaft', classic: true }),
+  // Dehler 37 CWS (1990–1997): E. G. van de Stadt, Flossenkiel, Spatenruder, Yanmar 3GM30 (27 PS), Saildrive oder Welle
+  productionYacht({ id: 'dehler-37-cws', name: 'Dehler 37 CWS (1997)', loa: 11.2, lwl: 8.6, beam: 3.5, displacement: 6000, draft: 1.8, keel: 'fin', rudder: 'spade', arrangement: 'single', powerKw: 20, drive: 'saildrive', classic: true }),
   // Hanse 388 (2018–): Judel/Vrolijk, tiefes Spatenruder, Saildrive 29 PS
   productionYacht({ id: 'hanse-388', name: 'Hanse 388', loa: 11.4, lwl: 10.39, beam: 3.91, displacement: 8270, draft: 1.99, keel: 'fin', rudder: 'spade', arrangement: 'single', powerKw: 21, drive: 'saildrive' }),
   // Hallberg-Rassy 40C (2016–): Germán Frers, Doppelruder, Volvo 60 PS
