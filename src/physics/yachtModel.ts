@@ -203,6 +203,7 @@ export function buildYachtModel(cfg: YachtConfig): YachtModel {
   };
   const rudderAR = (2 * rudder.span * rudder.span) / rudder.area;
   const rudderEff = rudder.type === 'spade' ? 1 : rudder.type === 'skeg' ? 0.85 : 0.65;
+  const twin = rudder.arrangement === 'twin';
   const rudderFoil: FoilParams = {
     x: rudder.x - lcg,
     area: rudder.area,
@@ -211,7 +212,8 @@ export function buildYachtModel(cfg: YachtConfig): YachtModel {
     stallRad: ((14 + 22 / Math.max(rudderAR, 0.5)) * Math.PI) / 180,
     cd0: 0.015,
     crossCd: 1.1,
-    reverseEff: rudder.type === 'spade' ? 0.7 : 0.5,
+    // Doppelruder steuern rückwärts gut (kein Ruder im Abstrom des Rumpfes mittschiffs)
+    reverseEff: twin ? 0.85 : rudder.type === 'spade' ? 0.7 : 0.5,
     efficiency: rudderEff,
   };
 
@@ -225,7 +227,8 @@ export function buildYachtModel(cfg: YachtConfig): YachtModel {
   const bollardThrust = Math.cbrt(2 * RHO_WATER * diskArea * Math.pow(0.5 * shaftPower, 2));
   const pitchSpeed = (engine.propPitch * engine.maxPropRpm) / 60;
   // Saildrive sitzt weiter vorn, Strahl trifft Ruder trotzdem; Anteil über Geometrie
-  const rudderInWash = Math.min(0.9, (engine.propDiameter / rudder.span) * (rudder.type === 'keelHung' ? 1.6 : 1.1));
+  // Doppelruder: der Strahl läuft zwischen beiden Blättern hindurch
+  const rudderInWash = twin ? 0.02 : Math.min(0.9, (engine.propDiameter / rudder.span) * (rudder.type === 'keelHung' ? 1.6 : 1.1));
 
   // --- Kontur ------------------------------------------------------------------
   const outline: Vec2[] = [];

@@ -428,3 +428,20 @@ describe('Manöverleine doppelt über die Klampe', () => {
     expect(dbl).toBeLessThan(brake * CLEAT_TURN_FRICTION * 1.25);
   });
 });
+
+describe('Leinennummern', () => {
+  it('nach dem Loswerfen wird die kleinste freie Nummer wieder vergeben', () => {
+    const y = new Yacht(SAILING_YACHT_36);
+    const ls = new LineSystem();
+    const a: ShoreAnchor = { id: 'a', kind: 'bollard', pos: y.toWorld({ x: 0, y: -3 }), label: '' };
+    const ids = ['bow-p', 'mid-p', 'stern-p'].map((c) => ls.attach(y, c, a)!.id);
+    expect(ids).toEqual([1, 2, 3]);
+    ls.release(1);
+    ls.release(2);
+    expect(ls.attach(y, 'bow-p', a)!.id).toBe(1);
+    expect(ls.attach(y, 'mid-p', a)!.id).toBe(2);
+    expect(ls.attach(y, 'mid-s', a)!.id).toBe(4);
+    ls.clear();
+    expect(ls.attach(y, 'mid-p', a)!.id).toBe(1);
+  });
+});
