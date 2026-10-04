@@ -48,7 +48,7 @@ Strip-Theorie für den Lateralplan. Integration mit festem Schritt 1/240 s.
 | **Verdrängung / Massenträgheit** | Starrkörpermasse + Trägheitsmoment (Trägheitsradius ≈ 0,24·LOA) plus **hydrodynamische Zusatzmasse** aus dem Lateralplan (m₂₂ ≈ 0,9·m, Kopplung m₂₆, m₆₆). Volle 3×3-Massenmatrix mit Coriolis-/Zentripetaltermen → Yacht gleitet lange, Drehung braucht Zeit zum Aufbauen und Stoppen. |
 | **Kielart** | Lateralplan in 48 Streifen (Kanu-Körper + Kiel). Kiel als Tragflügel (Auftriebsanstieg nach Helmbold aus Streckung, Stall, Rückwärtsanströmung), lange Kiele segmentiert. Flossen-, Bomben-, Lang- und Kimmkiel wählbar. Ergebnis: Langkieler kurshaltend und träge, Flossenkieler wendig und bei Fahrt null „ohne Grip“. |
 | **Drehpunkt** | Ergibt sich aus Querumströmung (Strip-Theorie), Rumpfauftrieb und Munk-Moment (nur Kanu-Körper, viskos abgemindert). |
-| **Ruder** | Foil mit Stall, begrenzter Legegeschwindigkeit, getrennt in freie Anströmung und **Schraubenstrahl** (Impulstheorie) → Radschlag aus dem Stand wirkt, rückwärts steuert erst mit Fahrt. |
+| **Ruder** | Foil mit Stall, begrenzter Legegeschwindigkeit, getrennt in freie Anströmung und **Schraubenstrahl** (Impulstheorie). Im Strahl reißt die Strömung später ab; die zusätzliche Ruderkraft aus dem Strahl ist durch dessen Impuls begrenzt (≤ 1 × Schub). → Ein kurzer Gasstoß mit Hartruder dreht die Yacht fast auf der Stelle, rückwärts steuert erst mit Fahrt. **Doppelruder**: der Strahl läuft zwischen den Blättern durch – aus dem Stand kaum Wirkung, rückwärts gut. |
 | **Radeffekt** | Querkraft am Propeller proportional zum Schub, achteraus ≈ 10× stärker als voraus, nimmt mit Fahrt ab; Drehrichtung und Stärke konfigurierbar (Welle/Saildrive). |
 | **Maschine** | Standschub aus Leistung und Propeller-Ø (Impulstheorie), Schub fällt mit Fortschrittsgeschwindigkeit, Rückwärtsschub reduziert, Leerlauf eingekuppelt ≈ 2–3 kn, **Schaltverzögerung über Neutral**, Drehzahlträgheit. |
 | **Wind** | Seiten-/Frontfläche, scheinbarer Wind, Angriffspunkt wandert zum Luv-Ende → **Bug fällt ab**. Böen und Winddreher als Ornstein-Uhlenbeck-Prozess (reproduzierbar per Seed). In der Karte als Windstreifen sichtbar, die mit Windrichtung und -geschwindigkeit ziehen und in Böen kräftiger werden; die kurzen Striche zeigen die Strömung. |
@@ -59,12 +59,62 @@ Strip-Theorie für den Lateralplan. Integration mit festem Schritt 1/240 s.
 | **Besatzung** | *Mannschaft*: Befehle werden sofort ausgeführt, der Skipper bleibt am Ruder. *Einhand*: Der Skipper läuft selbst an Deck (0,8 m/s; Heckklampen ~3 s, Bug ~10 s), nimmt die Leine, wirft von der Bordkante (Wurfweite wird beim Wurf geprüft – treibt das Boot weg, geht er daneben), belegt und kehrt zurück. Solange er nicht am Ruder ist, bleiben Gas und Ruder stehen, das Bugstrahlruder ist aus. Eine gehaltene Leine belegt er, bevor er weitergeht. Ins Cockpit geführte Manöverleinen bedient er vom Ruder aus. **Vorbereiten:** Solange das Ziel mindestens 20 m entfernt ist, kann er Festmacher (`J`) und Manöverleinen (`N`, Holepart optional schon im Cockpit) an den Klampen belegen und klar über die Reling legen. Nah am Ziel muss er dann nur noch zur Reling und werfen. |
 | **Kontakte** | Rumpfkontur gegen Dalben, Stege, Kaimauer und andere Boote (Feder/Dämpfer + Reibung), Aufprallgeschwindigkeit wird bewertet. |
 
-Kalibrierung (automatisierte Tests in `src/physics/yacht.test.ts`): Höchstfahrt
-6–7,5 kn, Standgas 2–3,5 kn, Auslaufen aus 4 kn > 2 Bootslängen, Drehkreis
-≈ 1,5 Bootslängen (Spatenruder im Schraubenstrahl), Driftgeschwindigkeit 15 kn Wind querab 0,5–2 kn, Radeffekt
-rückwärts Heck nach Bb (rechtsdrehend), Eindampfen in die Vorspring schwenkt
-das Heck vom Steg. Empirische Beiwerte stehen zentral in `TUNING`
-(`src/physics/yacht.ts`).
+Kalibrierung (automatisierte Tests in `src/physics/yacht.test.ts` und
+`src/physics/validation.test.ts`): Höchstfahrt nahe Rumpfgeschwindigkeit,
+Standgas 1,5–3 kn, Auslaufen aus 4 kn > 2 Bootslängen, Drehkreis voraus
+≈ 1,3 Bootslängen (Flossenkiel/Spatenruder) bzw. ≈ 2 (Langkiel, Doppelruder),
+Driftgeschwindigkeit 15 kn Wind querab 0,5–2 kn, Radeffekt rückwärts Heck nach
+Bb (rechtsdrehend), Eindampfen in die Vorspring schwenkt das Heck vom Steg.
+Empirische Beiwerte stehen zentral in `TUNING` (`src/physics/yacht.ts`).
+
+### Validierung: der Prüfstand
+
+Im Dialog „⛵ Yacht“ → **🧪 Prüfstand** fährt die Simulation Standardmanöver
+bei Windstille und vergleicht sie mit Referenzbereichen; „Alle Vorlagen
+vergleichen“ stellt die Yachten nebeneinander. Die Manöver folgen dem Muster
+der Versuchsfahrten für Schiffe (Drehkreis, Aufstoppen – [IMO MSC/Circ.1053](https://www.register-iri.com/wp-content/uploads/MSC.1-Circ.1053.pdf),
+[ITTC 7.5-04-02-01](https://ittc.info/media/2131/75-04-02-01.pdf)), ergänzt um
+typische Hafenmanöver:
+
+| Manöver | Referenz (Richtwert) | Grundlage |
+|---|---|---|
+| Höchstfahrt | 0,8–1,05 × Rumpfgeschwindigkeit | 1,34·√LWL[ft] |
+| Drehkreis voraus (taktischer Ø, Hartruder) | Flosse 0,8–2,5 L, Langkiel 1,5–4 L | Langkiel „wide turning circle ahead“, Flosse/Spaten „turns tight and quick“ ([PBO](https://www.pbo.co.uk/boats/keel-types-and-how-they-affect-performance-76621), [Yachting Monthly](https://www.yachtingmonthly.com/sailing-skills/keel-type-affects-performance-54322)) |
+| Kick aus dem Stand (Hartruder, 3 s Gas) | Einzelruder 15–70°, Doppelruder < 12° | Gasstoß auf das gelegte Ruder dreht das Boot ([Grenada Bluewater Sailing](https://www.grenadabluewatersailing.com/boat-handling-rudders-propellers/)); bei Doppelrudern läuft der Strahl zwischen den Rudern durch ([SAIL](https://sailmagazine.com/cruising/boat-handling-docking-with-twin-rudders/), [NauticEd](https://sailing-blog.nauticed.org/dual-rudder-maneuvering-under-power/)) |
+| Radeffekt rückwärts (10 s halbe Kraft) | Welle 8–90°, Saildrive 2–30°, Bug nach Stb (rechtsdrehend) | [segelplanet.de](https://segelplanet.de/radeffekt/), [SAIL: Walking the Prop](https://sailmagazine.com/cruising/walking-the-prop/) |
+| Aufstoppweg mit voll zurück | 0,4–3 L | Praxis |
+| Abdrift 15 kn querab | 0,4–2,2 kn | Praxis |
+
+Für Fahrtenyachten gibt es kaum veröffentlichte Manövriermessungen; die
+Bereiche sind deshalb bewusst weit und sollen grobe Fehler aufdecken. Wer
+eine Yacht genauer abgleichen will: im Hafen bei Flaute einen Kick (Hartruder,
+3 s Gas) und einen Vollkreis aus Manöverfahrt fahren, Kursänderung und Zeit
+stoppen (oder aus einem Video ablesen) und mit dem Prüfstand vergleichen.
+
+Diese Kalibrierung hat den Prüfstand ausgelöst: Vorher bremste das voll
+gelegte, abgerissene Ruder die Yacht im Drehkreis fast bis zum Stillstand,
+und ein Gasstoß drehte kaum. Geändert: Rumpfauftrieb bei Schräganströmung
+realistischer (vorher etwa 3× zu hoch), Strahlgeschwindigkeit am Ruder voll
+entwickelt, späterer Strömungsabriss im Strahl (vgl. Molland & Turnock,
+*Marine Rudders and Control Surfaces*), Impulsgrenze für die Strahlkraft,
+geringere Querumströmung am runden Kanu-Körper.
+
+### Yachtvorlagen
+
+Neben den Referenzbooten (36 ft Flossen- und Langkiel) gibt es gängige
+Serienyachten. Hauptdaten nach Herstellerangaben bzw. sailboatdata/Wikipedia
+(gerundet, Standardversion); Unterwassergeometrie, Propeller und Windangriff
+sind daraus abgeleitet (nicht veröffentlicht):
+
+| Yacht | LOA | Kiel / Ruder / Antrieb |
+|---|---|---|
+| Bavaria Cruiser 34 | 9,99 m | Flosse / Spaten / Saildrive |
+| Jeanneau Sun Odyssey 349 | 9,97 m | Flosse / Doppelruder / Saildrive |
+| Hallberg-Rassy 352 | 10,59 m | Flosse / Skeg / Welle |
+| Westsail 32 | 9,75 m | Langkiel / am Kiel / Welle |
+| Hanse 388 | 11,40 m | Flosse / Spaten / Saildrive |
+| Hallberg-Rassy 40C | 12,33 m | Flosse / Doppelruder / Welle |
+| Beneteau Oceanis 46.1 | 13,65 m | Flosse / Doppelruder / Saildrive, Bugstrahlruder |
 
 > Hinweis: „Randeffekt“ wurde als **Radeffekt** (Propeller-Querschub)
 > umgesetzt. Ein Ufer-/Bank-Effekt (Sog zur Wand bei enger Passage) ist als
@@ -145,6 +195,7 @@ src/
     yachtConfig.ts    YachtConfig-Schema (JSON), Presets, Validierung
     yachtModel.ts     abgeleitete Größen: Massenmatrix, Lateralplan, Foils, Kontur
     yacht.ts          Kräfte & Integration (3DOF), TUNING-Beiwerte
+    validation.ts     Prüfstand: Standardmanöver, Referenzbereiche, Quellen
     environment.ts    Wind mit Böen, Strömung
     lines.ts          Festmacherleinen und Crew-Aktionen
     collision.ts      Kontaktmodell

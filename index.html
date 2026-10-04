@@ -246,6 +246,12 @@
         </label>
         <div id="yacht-fields"></div>
         <p id="yacht-errors" class="errors"></p>
+        <details id="bench-box">
+          <summary>🧪 Prüfstand: Manövrierverhalten prüfen</summary>
+          <p class="hint">Standardmanöver bei Windstille (Drehkreis, Kick, Radeffekt, Aufstoppen, Abdrift) mit Referenzbereichen und Quellen. Die Bereiche sind Richtwerte aus Physik und Praxisbeschreibungen, keine Messwerte einer bestimmten Yacht.</p>
+          <div class="row"><button type="button" id="btn-bench">Prüfstand mit diesen Werten fahren</button><button type="button" id="btn-bench-all">Alle Vorlagen vergleichen</button></div>
+          <div id="bench-out"></div>
+        </details>
         <details>
           <summary>JSON Export / Import</summary>
           <textarea id="yacht-json" rows="10" spellcheck="false"></textarea>

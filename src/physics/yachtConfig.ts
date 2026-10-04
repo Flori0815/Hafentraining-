@@ -11,6 +11,8 @@ export type KeelType = 'fin' | 'bulb' | 'long' | 'bilge';
 export type RudderType = 'spade' | 'skeg' | 'keelHung';
 export type PropRotation = 'right' | 'left';
 export type DriveType = 'shaft' | 'saildrive';
+/** Einzelruder mittschiffs oder Doppelruder (außerhalb des Schraubenstrahls) */
+export type RudderArrangement = 'single' | 'twin';
 
 export interface CleatConfig {
   id: string;
@@ -54,6 +56,8 @@ export interface YachtConfig {
   };
   rudder: {
     type: RudderType;
+    /** Einzel- oder Doppelruder (fehlt: Einzelruder). Fläche = Summe beider Blätter. */
+    arrangement?: RudderArrangement;
     /** Ruderfläche [m²] */
     area: number;
     /** Ruderspannweite (Tiefe) [m] */
@@ -179,10 +183,11 @@ export const LONG_KEEL_36: YachtConfig = {
     freeboard: 1.05,
     transomRatio: 0.45,
     lcg: -0.2,
-    gyrationRatio: 0.25,
+    gyrationRatio: 0.26,
   },
-  keel: { type: 'long', draft: 1.7, chord: 4.4, x: -1.0 },
-  rudder: { type: 'keelHung', area: 0.75, span: 1.2, x: -3.2, maxAngleDeg: 35, rateDegPerS: 22 },
+  // Langkiel bis in den Vorfuß; am Kiel angehängtes Ruder, Ausschlag durch die Schraubenöffnung begrenzt
+  keel: { type: 'long', draft: 1.7, chord: 6.0, x: -0.5 },
+  rudder: { type: 'keelHung', area: 0.6, span: 1.2, x: -3.5, maxAngleDeg: 30, rateDegPerS: 22 },
   engine: {
     powerKw: 29,
     propDiameter: 0.43,
@@ -202,7 +207,115 @@ export const LONG_KEEL_36: YachtConfig = {
   cleats: defaultCleats(10.97, 3.3),
 };
 
-export const PRESETS: YachtConfig[] = [SAILING_YACHT_36, LONG_KEEL_36];
+/**
+ * Hauptdaten eines Serienboots. Unterwassergeometrie, Propeller und
+ * Windangriff gibt kein Hersteller an – sie werden aus den Hauptdaten nach
+ * den Verhältnissen der kalibrierten 36-Fuß-Referenz abgeleitet.
+ */
+interface ProductionYacht {
+  id: string;
+  name: string;
+  /** Rumpflänge [m] (ohne Bugspriet/Badeplattform) */
+  loa: number;
+  lwl: number;
+  beam: number;
+  displacement: number;
+  draft: number;
+  keel: KeelType;
+  rudder: RudderType;
+  arrangement: RudderArrangement;
+  powerKw: number;
+  drive: DriveType;
+  /** klassischer Rumpf: schmales Heck, Überhänge */
+  classic?: boolean;
+  bowThruster?: number;
+}
+
+function productionYacht(p: ProductionYacht): YachtConfig {
+  const { loa, lwl, draft } = p;
+  const long = p.keel === 'long';
+  const twin = p.arrangement === 'twin';
+  const canoeDraft = Math.min(draft - 0.3, lwl * (long ? 0.07 : 0.056));
+  const keelChord = long ? 0.68 * lwl : p.rudder === 'skeg' ? 0.26 * lwl : 0.12 * lwl;
+  const span = long ? 0.9 * (draft - 0.2) : Math.min(0.75 * draft, 1.7);
+  // Ruderfläche ~ Lateralplan; Doppelruder: zwei kleinere Blätter, zusammen etwas mehr
+  const rudderArea = (long ? 0.034 : 0.033) * lwl * draft * (twin ? 1.15 : 1);
+  const rudderX = long ? -0.32 * loa : p.rudder === 'skeg' ? -0.37 * loa : -0.355 * loa;
+  const propD = Math.round(0.38 * Math.pow(p.powerKw / 21, 0.25) * 100) / 100;
+  const shaft = p.drive === 'shaft';
+  return {
+    schemaVersion: 1,
+    id: p.id,
+    name: p.name,
+    hull: {
+      loa,
+      lwl,
+      beam: p.beam,
+      displacement: p.displacement,
+      canoeDraft: Math.round(canoeDraft * 100) / 100,
+      freeboard: Math.round(0.105 * loa * 100) / 100,
+      transomRatio: p.classic ? 0.5 : 0.85,
+      lcg: Math.round(-0.03 * loa * 100) / 100,
+      gyrationRatio: long ? 0.26 : 0.24,
+    },
+    keel: { type: p.keel, draft, chord: Math.round(keelChord * 100) / 100, x: Math.round((long ? -0.05 : p.rudder === 'skeg' ? -0.02 : 0.01) * loa * 100) / 100 },
+    rudder: {
+      type: p.rudder,
+      arrangement: p.arrangement,
+      area: Math.round(rudderArea * 100) / 100,
+      span: Math.round(span * 100) / 100,
+      x: Math.round(rudderX * 100) / 100,
+      maxAngleDeg: long ? 30 : 35,
+      rateDegPerS: long ? 22 : 28,
+    },
+    engine: {
+      powerKw: p.powerKw,
+      propDiameter: propD,
+      propPitch: Math.round(0.68 * propD * 100) / 100,
+      maxPropRpm: shaft ? 1450 : 1300,
+      propRotation: 'right',
+      drive: p.drive,
+      // Saildrive sitzt weiter vorn unter dem Rumpf, Welle kurz vor dem Ruder
+      propX: Math.round((shaft ? (long ? -0.29 : -0.27) : -0.2) * loa * 100) / 100,
+      reverseEfficiency: shaft ? 0.6 : 0.65,
+      propWalk: shaft ? (long ? 1.6 : 1.1) : 0.5,
+      idleFraction: 0.3,
+      shiftDelay: 0.6,
+      spoolTime: 0.7,
+    },
+    windage: {
+      lateralArea: Math.round(0.158 * loa * loa * 10) / 10,
+      frontalArea: Math.round(0.062 * loa * loa * 10) / 10,
+      ceX: Math.round(0.04 * loa * 100) / 100,
+      ceShift: Math.round(0.13 * loa * 100) / 100,
+    },
+    bowThruster: { enabled: !!p.bowThruster, thrust: p.bowThruster ?? 700, x: Math.round(0.42 * loa * 100) / 100 },
+    cleats: defaultCleats(loa, p.beam),
+  };
+}
+
+/**
+ * Gängige Serienyachten von 30 bis 50 Fuß. Hauptdaten nach Hersteller-
+ * angaben bzw. sailboatdata.com / Wikipedia (gerundet, Standardversion).
+ */
+export const PRODUCTION_YACHTS: YachtConfig[] = [
+  // Bavaria Cruiser 34 (2013–): Farr Design, Spatenruder, Saildrive
+  productionYacht({ id: 'bavaria-cruiser-34', name: 'Bavaria Cruiser 34', loa: 9.99, lwl: 9.15, beam: 3.42, displacement: 5300, draft: 2.04, keel: 'fin', rudder: 'spade', arrangement: 'single', powerKw: 21, drive: 'saildrive' }),
+  // Jeanneau Sun Odyssey 349 (2014–): Marc Lombard, Doppelruder, Yanmar 21 PS
+  productionYacht({ id: 'jeanneau-so-349', name: 'Jeanneau Sun Odyssey 349', loa: 9.97, lwl: 9.4, beam: 3.44, displacement: 5350, draft: 1.98, keel: 'fin', rudder: 'spade', arrangement: 'twin', powerKw: 16, drive: 'saildrive' }),
+  // Hallberg-Rassy 352 (1978–1991): Flossenkiel, Ruder am Skeg, Welle, Volvo 30 PS
+  productionYacht({ id: 'hr-352', name: 'Hallberg-Rassy 352', loa: 10.59, lwl: 8.71, beam: 3.38, displacement: 6700, draft: 1.68, keel: 'fin', rudder: 'skeg', arrangement: 'single', powerKw: 22, drive: 'shaft', classic: true }),
+  // Westsail 32 (1971–1980): Langkieler, Ruder am Kiel, Welle
+  productionYacht({ id: 'westsail-32', name: 'Westsail 32 (Langkiel)', loa: 9.75, lwl: 8.38, beam: 3.35, displacement: 8850, draft: 1.52, keel: 'long', rudder: 'keelHung', arrangement: 'single', powerKw: 18, drive: 'shaft', classic: true }),
+  // Hanse 388 (2018–): Judel/Vrolijk, tiefes Spatenruder, Saildrive 29 PS
+  productionYacht({ id: 'hanse-388', name: 'Hanse 388', loa: 11.4, lwl: 10.39, beam: 3.91, displacement: 8270, draft: 1.99, keel: 'fin', rudder: 'spade', arrangement: 'single', powerKw: 21, drive: 'saildrive' }),
+  // Hallberg-Rassy 40C (2016–): Germán Frers, Doppelruder, Volvo 60 PS
+  productionYacht({ id: 'hr-40c', name: 'Hallberg-Rassy 40C', loa: 12.33, lwl: 11.74, beam: 4.18, displacement: 11000, draft: 1.92, keel: 'fin', rudder: 'spade', arrangement: 'twin', powerKw: 44, drive: 'shaft' }),
+  // Beneteau Oceanis 46.1 (2018–): Finot-Conq, Doppelruder, Yanmar 57 PS, Bugstrahlruder
+  productionYacht({ id: 'oceanis-46-1', name: 'Beneteau Oceanis 46.1', loa: 13.65, lwl: 13.23, beam: 4.5, displacement: 10600, draft: 2.1, keel: 'fin', rudder: 'spade', arrangement: 'twin', powerKw: 42, drive: 'saildrive', bowThruster: 1300 }),
+];
+
+export const PRESETS: YachtConfig[] = [SAILING_YACHT_36, LONG_KEEL_36, ...PRODUCTION_YACHTS];
 
 export function cloneConfig(c: YachtConfig): YachtConfig {
   return JSON.parse(JSON.stringify(c)) as YachtConfig;

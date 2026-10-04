@@ -77,15 +77,29 @@ export const TUNING = {
   /** Anteil des potentialtheoretischen Munk-Moments (viskose Abminderung) */
   munk: 0.5,
   /** Geschwindigkeit im Schraubenstrahl am Ruder / Fernfeld-Zusatzgeschw. */
-  slipstream: 0.6,
+  slipstream: 1.0,
   /** Radeffekt-Querkraft / Schub (voraus, achteraus) */
   propWalkAhead: 0.03,
   propWalkAstern: 0.3,
   /** Querumströmungsbeiwert Rumpf / Kiel */
-  hullCrossCd: 0.8,
+  hullCrossCd: 0.5,
   keelCrossCd: 1.1,
+  /** Restanteil des Normalkraftbeiwerts nach dem Strömungsabriss (Ruder/Kiel) */
+  stallFloor: 0.6,
+  /**
+   * Im Schraubenstrahl reißt die Strömung am Ruder später ab (beschleunigte,
+   * drallbehaftete Zuströmung; vgl. Molland & Turnock, Marine Rudders and
+   * Control Surfaces) – zusätzlicher Abrisswinkel [°]
+   */
+  washStallDelayDeg: 12,
+  /**
+   * Impulsgrenze: Der Strahlanteil des Ruders kann höchstens diesen Anteil
+   * des Propellerschubs zusätzlich umlenken (Pfahlzug, Hartruder: Querkraft
+   * typ. 0,4–0,6 × Schub)
+   */
+  washForceCap: 1.0,
   /** Linearer Rumpfauftrieb bei Schräganströmung */
-  hullLift: 1,
+  hullLift: 0.3,
   /** Windkraftbeiwerte längs / quer (Yachten typ. 0.6–0.8 / 0.8–0.9) */
   windCx: 0.75,
   windCy: 0.85,
@@ -106,7 +120,7 @@ export function foilForce(sc: number, sn: number, area: number, p: FoilParams): 
   const reversed = cosA < 0;
   const aEff = Math.asin(Math.min(1, Math.abs(sinA))); // 0 … π/2
   let stall = 1;
-  if (aEff > p.stallRad) stall = Math.max(0.45, 1 - ((aEff - p.stallRad) / (12 * DEG)) * 0.55);
+  if (aEff > p.stallRad) stall = Math.max(TUNING.stallFloor, 1 - ((aEff - p.stallRad) / (12 * DEG)) * 0.55);
   const eff = p.efficiency * (reversed ? p.reverseEff : 1);
   const cn = p.clAlpha * sinA * Math.abs(cosA) * stall * eff + p.crossCd * sinA * Math.abs(sinA);
   return { fc: -q * area * p.cd0 * cosA, fn: -q * area * cn };
@@ -290,16 +304,26 @@ export class Yacht {
       const cy = -Math.sin(d);
       const nx = Math.sin(d);
       const ny = Math.cos(d);
-      const addFoil = (sx: number, sy: number, area: number) => {
+      const addFoil = (sx: number, sy: number, area: number, params = p) => {
         const sc = sx * cx + sy * cy;
         const sn = sx * nx + sy * ny;
-        const f = foilForce(sc, sn, area, p);
+        const f = foilForce(sc, sn, area, params);
         return { x: f.fc * cx + f.fn * nx, y: f.fc * cy + f.fn * ny };
       };
       const sy = vr + p.x * r;
       const wash = m.rudderInWash;
       const f1 = addFoil(ur, sy, p.area * (1 - wash));
-      const f2 = addFoil(ur + slip, sy, p.area * wash);
+      const pw = TUNING.washStallDelayDeg ? { ...p, stallRad: p.stallRad + TUNING.washStallDelayDeg * DEG } : p;
+      let f2 = addFoil(ur + slip, sy, p.area * wash, pw);
+      if (slip > 0 && Number.isFinite(TUNING.washForceCap)) {
+        // was der Strahl zusätzlich zur freien Anströmung liefert, ist durch seinen Impuls begrenzt
+        const free = addFoil(ur, sy, p.area * wash);
+        const ex = f2.x - free.x;
+        const ey = f2.y - free.y;
+        const extra = Math.hypot(ex, ey);
+        const cap = TUNING.washForceCap * Math.abs(thrust);
+        if (extra > cap) f2 = { x: free.x + (ex * cap) / extra, y: free.y + (ey * cap) / extra };
+      }
       apply('rudder', { x: p.x, y: 0 }, f1.x + f2.x, f1.y + f2.y);
     }
 

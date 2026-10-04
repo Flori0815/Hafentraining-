@@ -800,3 +800,50 @@ dialog.wide {
 .prep-hint {
   margin: 8px 0 4px;
 }
+
+.bench-wrap {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+table.bench {
+  border-collapse: collapse;
+  font-size: 12px;
+  flex: 1 1 380px;
+}
+table.bench th,
+table.bench td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+table.bench td.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+table.bench tr.off td {
+  color: #fbbf24;
+}
+table.bench .basis {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+table.bench .src a {
+  color: #7dd3fc;
+}
+.bench-sketch {
+  background: rgba(10, 22, 32, 0.6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+#bench-box figure {
+  margin: 0;
+}
+#bench-box figcaption {
+  font-size: 11px;
+  color: var(--muted);
+}

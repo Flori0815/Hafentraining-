@@ -896,7 +896,7 @@ const MODE_LABEL: Record<LineMode, string> = { hand: 'Hand', heave: 'Holen', eas
 function renderLines(): void {
   const el = $('lines');
   if (ia.selectedLine !== null && !sim.lines.lines.some((l) => l.id === ia.selectedLine)) ia.selectedLine = null;
-  const sig = sim.lines.lines.map((l) => `${l.id}:${l.mode}:${l.cockpit ? 1 : 0}`).join(',') + '|' + ia.selectedLine;
+  const sig = sim.lines.lines.map((l) => `${l.id}:${l.cleatId}:${l.slip?.cleatId ?? ''}:${l.anchor.id}:${l.mode}:${l.cockpit ? 1 : 0}`).join(',') + '|' + ia.selectedLine;
   if (sig !== linesSignature) {
     linesSignature = sig;
     el.innerHTML = sim.lines.lines

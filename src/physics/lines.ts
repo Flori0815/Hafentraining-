@@ -148,7 +148,12 @@ function slipAbove(line: MooringLine, tension: number, limit: number, k: number,
 export class LineSystem {
   lines: MooringLine[] = [];
   settings: LineSettings;
-  private nextId = 1;
+  /** Kleinste freie Leinennummer: Nummern losgeworfener Leinen werden wieder vergeben (1–9 per Taste). */
+  private get nextId(): number {
+    let id = 1;
+    while (this.lines.some((l) => l.id === id)) id++;
+    return id;
+  }
   events: string[] = [];
   /**
    * Zwei ins Cockpit geführte Manöverleinen dosiert fieren: `ease` (0 … 1)
@@ -193,7 +198,7 @@ export class LineSystem {
     const reach = this.canReach(yacht, cleatId, anchor);
     if (!reach.ok) return null;
     const line: MooringLine = {
-      id: this.nextId++,
+      id: this.nextId,
       cleatId,
       anchor,
       // etwas Lose: die Leine liegt nach dem Wurf nicht sofort steif
@@ -215,7 +220,7 @@ export class LineSystem {
     const c = yacht.cleatWorld(cleatId);
     if (!c) return null;
     const line: MooringLine = {
-      id: this.nextId++,
+      id: this.nextId,
       cleatId,
       anchor,
       length: Math.max(0.3, dist(c, anchor.pos)),
@@ -243,7 +248,7 @@ export class LineSystem {
     const dWork = dist(w, anchor.pos);
     if (dFixed + dWork + 0.6 > this.settings.slipMaxLength) return null;
     const line: MooringLine = {
-      id: this.nextId++,
+      id: this.nextId,
       cleatId: workCleatId,
       anchor,
       length: dWork + 0.4,

@@ -3,6 +3,43 @@
  * damit neue Parameter mit einer Zeile ergänzt werden können.
  */
 import { PRESETS, cloneConfig, defaultCleats, validateConfig, type YachtConfig } from '../physics/yachtConfig';
+import { SOURCES, kickTurn, propWalkAstern, runBench, speeds, turningCircle, type CheckResult, type TurnResult } from '../physics/validation';
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const fmt = (v: number, unit: string) => (Number.isNaN(v) ? '–' : `${v.toFixed(unit === 'L' || unit === '' ? 2 : 1)}${unit && unit !== '' ? ` ${unit}` : ''}`);
+
+/** Bahn im Drehkreis als kleine Skizze (SVG), Bootslänge als Maßstab. */
+function turnSketch(t: TurnResult, loa: number): string {
+  if (t.track.length < 2) return '';
+  const xs = t.track.map((p) => p.x);
+  const ys = t.track.map((p) => p.y);
+  const pad = loa * 0.6;
+  const x0 = Math.min(...xs, 0) - pad;
+  const x1 = Math.max(...xs, 0) + pad;
+  const y0 = Math.min(...ys, 0) - pad;
+  const y1 = Math.max(...ys, 0) + pad;
+  const w = 220;
+  const sc = w / Math.max(x1 - x0, y1 - y0);
+  const P = (p: { x: number; y: number }) => `${((p.x - x0) * sc).toFixed(1)},${((y1 - p.y) * sc).toFixed(1)}`;
+  const path = t.track.map(P).join(' ');
+  const bar = loa * sc;
+  return `<svg class="bench-sketch" viewBox="0 0 ${w} ${w}" width="${w}" height="${w}" role="img" aria-label="Bahn im Drehkreis">
+    <polyline points="${path}" fill="none" stroke="#38bdf8" stroke-width="2"/>
+    <circle cx="${P({ x: 0, y: 0 }).split(',')[0]}" cy="${P({ x: 0, y: 0 }).split(',')[1]}" r="3.5" fill="#fbbf24"/>
+    <line x1="8" y1="${w - 10}" x2="${8 + bar}" y2="${w - 10}" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="8" y="${w - 14}" fill="#e2e8f0" font-size="10">1 Bootslänge</text>
+  </svg>`;
+}
+
+function checksTable(checks: CheckResult[]): string {
+  const rows = checks
+    .map((c) => {
+      const src = c.sources.map((k) => SOURCES[k]).filter(Boolean).map((s) => `<a href="${s.url}" target="_blank" rel="noopener">${esc(s.label)}</a>`).join('<br>');
+      return `<tr class="${c.verdict}"><td>${c.verdict === 'ok' ? '✓' : '⚠'}</td><td>${esc(c.label)}<div class="basis">${esc(c.basis)}${src ? `<div class="src">${src}</div>` : ''}</div></td><td class="num">${fmt(c.value, c.unit)}</td><td class="num">${fmt(c.range[0], c.unit)} … ${fmt(c.range[1], c.unit)}</td></tr>`;
+    })
+    .join('');
+  return `<table class="bench"><thead><tr><th></th><th>Manöver</th><th>Simulation</th><th>Referenz</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
 
 type FieldType = 'number' | 'select' | 'checkbox' | 'text';
 
@@ -73,7 +110,16 @@ const GROUPS: Group[] = [
           ['keelHung', 'am Kiel angehängt'],
         ],
       },
-      { path: 'rudder.area', label: 'Ruderfläche', unit: 'm²', step: 0.02, min: 0.1, max: 3 },
+      {
+        path: 'rudder.arrangement',
+        label: 'Anordnung',
+        type: 'select',
+        options: [
+          ['single', 'Einzelruder (im Schraubenstrahl)'],
+          ['twin', 'Doppelruder (Strahl läuft dazwischen)'],
+        ],
+      },
+      { path: 'rudder.area', label: 'Ruderfläche (gesamt)', unit: 'm²', step: 0.02, min: 0.1, max: 3 },
       { path: 'rudder.span', label: 'Ruderspannweite', unit: 'm', step: 0.05, min: 0.3, max: 3 },
       { path: 'rudder.x', label: 'Ruderposition (+ vorn)', unit: 'm', step: 0.05, min: -12, max: 0 },
       { path: 'rudder.maxAngleDeg', label: 'max. Ruderwinkel', unit: '°', step: 1, min: 15, max: 45 },
@@ -183,6 +229,46 @@ export class YachtEditor {
       } catch (e) {
         this.errorsEl.textContent = 'JSON ungültig: ' + (e as Error).message;
       }
+    });
+    const out = document.getElementById('bench-out')!;
+    document.getElementById('btn-bench')!.addEventListener('click', () => {
+      this.readFields();
+      const errs = validateConfig(this.working);
+      if (errs.length) {
+        out.innerHTML = `<p class="errors">${esc(errs.join(' · '))}</p>`;
+        return;
+      }
+      out.innerHTML = '<p class="hint">Prüfstand läuft …</p>';
+      const cfg = cloneConfig(this.working);
+      setTimeout(() => {
+        const { checks, turn } = runBench(cfg);
+        const ok = checks.filter((c) => c.verdict === 'ok').length;
+        out.innerHTML = `<p><b>${esc(cfg.name)}</b>: ${ok}/${checks.length} im Referenzbereich</p>
+          <div class="bench-wrap">${checksTable(checks)}<figure>${turnSketch(turn, cfg.hull.loa)}<figcaption>Bahn im Drehkreis (Hartruder Stb, Start ● )</figcaption></figure></div>`;
+      }, 30);
+    });
+    document.getElementById('btn-bench-all')!.addEventListener('click', () => {
+      const rows: string[] = [];
+      const head = '<tr><th>Yacht</th><th>Kiel / Ruder / Antrieb</th><th>Vmax</th><th>Drehkreis</th><th>360°</th><th>Kick</th><th>Radeffekt 10 s</th></tr>';
+      const KEEL: Record<string, string> = { fin: 'Flosse', bulb: 'Bombe', long: 'Langkiel', bilge: 'Kimm' };
+      const RUD: Record<string, string> = { spade: 'Spaten', skeg: 'Skeg', keelHung: 'am Kiel' };
+      out.innerHTML = '<p class="hint">Vergleich läuft …</p>';
+      const step = (i: number) => {
+        if (i >= PRESETS.length) {
+          out.innerHTML = `<table class="bench compare"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table>
+            <p class="hint">Drehkreis = taktischer Durchmesser in Bootslängen bei Hartruder aus Manöverfahrt; Kick = Kursänderung aus dem Stand nach 3 s Gasstoß mit Hartruder.</p>`;
+          return;
+        }
+        const c = PRESETS[i];
+        const t = turningCircle(c);
+        const r = `${KEEL[c.keel.type]} / ${c.rudder.arrangement === 'twin' ? 'Doppel-' : ''}${RUD[c.rudder.type]} / ${c.engine.drive === 'shaft' ? 'Welle' : 'Saildrive'}`;
+        rows.push(
+          `<tr><td>${esc(c.name)} <span class="hint">${(c.hull.loa / 0.3048).toFixed(0)} ft</span></td><td>${r}</td><td class="num">${speeds(c).max.toFixed(1)} kn</td><td class="num">${(t.tactical / c.hull.loa).toFixed(1)} L</td><td class="num">${Number.isNaN(t.t360) ? '–' : t.t360.toFixed(0) + ' s'}</td><td class="num">${kickTurn(c).heading.toFixed(0)}°</td><td class="num">${propWalkAstern(c).toFixed(0)}°</td></tr>`,
+        );
+        out.innerHTML = `<p class="hint">Vergleich läuft … ${i + 1}/${PRESETS.length}</p>`;
+        setTimeout(() => step(i + 1), 10);
+      };
+      setTimeout(() => step(0), 10);
     });
     const form = document.getElementById('form-yacht') as HTMLFormElement;
     form.addEventListener('submit', (ev) => {
