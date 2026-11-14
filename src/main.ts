@@ -489,8 +489,11 @@ function renderPrepared(): void {
     .map((p) => {
       const what = p.slip
         ? `Manöverleine ${cleatName(sim, p.cleatId)} → ${p.slip.cockpit ? 'Cockpit' : cleatName(sim, p.slip.workCleatId)}`
-        : `Festmacher an ${cleatName(sim, p.cleatId)}`;
-      const aft = p.slip && !p.slip.cockpit ? `<button type="button" data-prep="${p.id}" data-act="aft" title="Holepart schon ins Cockpit führen">→ Cockpit</button>` : '';
+        : `Festmacher an ${cleatName(sim, p.cleatId)}${p.cockpit ? ' → Cockpit' : ''}`;
+      const inCockpit = p.slip ? p.slip.cockpit : p.cockpit;
+      const aft = !inCockpit
+        ? `<button type="button" data-prep="${p.id}" data-act="aft" title="${p.slip ? 'Holepart schon ins Cockpit führen' : 'Holepart über die Klampe umgelenkt ins Cockpit führen – nach dem Wurf vom Ruder aus fieren und lenken'}">→ Cockpit</button>`
+        : '';
       return `<li><span>🪢 ${escapeHtml(what)} – bereit</span>${aft}<button type="button" data-prep="${p.id}" data-act="stow" title="Leine wieder wegstauen">wegstauen</button></li>`;
     })
     .join('');
@@ -569,8 +572,11 @@ function flash(text: string, pos: Vec2): void {
 type LineAct = LineMode | 'release' | 'aft' | 'noaft';
 
 function lineAction(id: number, act: LineAct): void {
-  if (act === 'aft' || act === 'noaft') orderLeadAft(sim, id, act === 'aft');
-  else orderLine(sim, id, act);
+  if (act === 'aft' || act === 'noaft') {
+    const err = orderLeadAft(sim, id, act === 'aft');
+    const l = sim.lines.lines.find((x) => x.id === id);
+    if (err && l) flash(err, sim.yacht.cleatWorld(l.cleatId) ?? sim.yacht.state.pos);
+  } else orderLine(sim, id, act);
   linesSignature = '';
 }
 
@@ -643,7 +649,7 @@ function renderCrew(): void {
     const [a, b] = sim.lines.cockpitEase();
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     $('out-steer').textContent =
-      a < 0.02 && b < 0.02 ? 'Manöverleinen halten' : `fieren: Leine ${pair[0].id} ${pct(a)} · Leine ${pair[1].id} ${pct(b)}`;
+      a < 0.02 && b < 0.02 ? 'Leinen im Cockpit halten' : `fieren: Leine ${pair[0].id} ${pct(a)} · Leine ${pair[1].id} ${pct(b)}`;
     if (document.activeElement !== steerInput) steerInput.value = String(Math.round(sim.lines.steer * 100));
     if (document.activeElement !== easeInput) easeInput.value = String(Math.round(sim.lines.ease * 100));
   }
@@ -903,10 +909,13 @@ function renderLines(): void {
       .map((l) => {
         const title = l.slip
           ? `${l.id} · Manöverleine ${cleatName(sim, l.slip.cleatId)} ⇄ ${l.anchor.label} ⇄ ${l.cockpit ? 'Cockpit' : cleatName(sim, l.cleatId)}`
-          : `${l.id} · ${cleatName(sim, l.cleatId)} → ${l.anchor.label}`;
-        const aft = l.slip
-          ? `<button data-line="${l.id}" data-act="${l.cockpit ? 'noaft' : 'aft'}" class="${l.cockpit ? 'on' : ''}" title="Holepart an Deck nach achtern ins Cockpit führen – Bedienung vom Ruder aus">${l.cockpit ? 'im Cockpit' : '→ Cockpit'}</button>`
-          : '';
+          : l.cockpit
+            ? `${l.id} · ${l.anchor.label} → über ${cleatName(sim, l.cleatId)} → Cockpit`
+            : `${l.id} · ${cleatName(sim, l.cleatId)} → ${l.anchor.label}`;
+        const aftTitle = l.slip
+          ? 'Holepart an Deck nach achtern ins Cockpit führen – Bedienung vom Ruder aus'
+          : 'Festmacher bleibt an Land fest, die Holepart läuft über die Klampe umgelenkt ins Cockpit – vom Ruder aus fieren und lenken';
+        const aft = `<button data-line="${l.id}" data-act="${l.cockpit ? 'noaft' : 'aft'}" class="${l.cockpit ? 'on' : ''}" title="${aftTitle}">${l.cockpit ? 'im Cockpit' : '→ Cockpit'}</button>`;
         const btn = (mode: LineMode, label: string, key: string) =>
           `<button data-line="${l.id}" data-act="${mode}" class="${l.mode === mode ? 'on' : ''}" title="${label} (${key})">${label}</button>`;
         return `<div class="line-card ${ia.selectedLine === l.id ? 'sel' : ''}" data-card="${l.id}">

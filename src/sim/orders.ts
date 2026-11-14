@@ -6,7 +6,7 @@
  */
 import { BALL_FENDER, nearestHullPoint, type FenderSide } from '../physics/fenders';
 import type { LineMode, MooringLine, ShoreAnchor } from '../physics/lines';
-import { MAX_SLIP_LINES } from '../physics/lines';
+import { MAX_COCKPIT_LINES, MAX_SLIP_LINES } from '../physics/lines';
 import { worldToBody, type Vec2 } from '../physics/vec';
 import type { CrewStep } from './crew';
 import type { Simulation } from './simulation';
@@ -33,6 +33,8 @@ const MODE_TEXT: Record<LineMode, string> = { hand: 'von Hand gehalten', heave: 
 const MODE_WORK: Record<LineMode, string> = { hand: 'hält Leine', heave: 'holt dicht', ease: 'fiert', cleated: 'belegt' };
 
 const solo = (sim: Simulation) => sim.crew.mode === 'solo';
+
+const winchesBusy = () => `Beide Winschen im Cockpit sind belegt (höchstens ${MAX_COCKPIT_LINES} Leinen im Cockpit)`;
 
 function cleatPos(sim: Simulation, id: string): Vec2 {
   return sim.yacht.model.cleats.find((c) => c.id === id)?.pos ?? sim.crew.helm;
@@ -88,7 +90,10 @@ export function orderThrow(sim: Simulation, cleat: string, anchor: ShoreAnchor):
     return pre;
   }
   const steps: CrewStep[] = prep
-    ? [throwStep(sim, cleat, anchor, 'vorbereitete Leine')]
+    ? [
+        throwStep(sim, cleat, anchor, 'vorbereitete Leine'),
+        ...(prep.cockpit ? [{ at: 'helm' as const, seconds: SOLO_SECONDS.cockpitLineMode, label: 'nimmt die Leine auf der Winsch dicht' }] : []),
+      ]
     : [
         { at: cleatPos(sim, cleat), seconds: SOLO_SECONDS.takeLine, label: `belegt Leine auf ${cleatName(sim, cleat)}` },
         throwStep(sim, cleat, anchor, 'Leine'),
@@ -100,11 +105,22 @@ export function orderThrow(sim: Simulation, cleat: string, anchor: ShoreAnchor):
       const line = sim.lines.attach(sim.yacht, cleat, anchor);
       if (!line) return;
       const used = sim.lines.preparedAt(cleat);
+      const cockpit = !!(used && !used.slip && used.cockpit);
       if (used && !used.slip) sim.lines.unprepare(used.id);
+      if (cockpit) {
+        // Holepart läuft über die Klampe bis auf die Winsch im Cockpit
+        line.cockpit = true;
+        line.mode = 'cleated';
+      }
       const r = sim.lines.canReach(sim.yacht, cleat, anchor);
-      sim.addLog(`Leine ${line.id}: ${cleatName(sim, cleat)} → ${anchor.label} (Wurf ${r.distance.toFixed(1)} m), von Hand gehalten`, 'info');
+      sim.addLog(
+        `Leine ${line.id}: ${cleatName(sim, cleat)} → ${anchor.label} (Wurf ${r.distance.toFixed(1)} m), ${
+          cockpit ? `über ${cleatName(sim, cleat)} ins Cockpit, auf der Winsch belegt` : 'von Hand gehalten'
+        }`,
+        'info',
+      );
       sim.onLineAttached?.(line);
-      return { attend: line.id };
+      return cockpit ? undefined : { attend: line.id };
     },
   });
   return null;
@@ -121,6 +137,7 @@ export function orderSlip(sim: Simulation, fixedCleat: string, anchor: ShoreAnch
   const prep = sim.lines.preparedAt(fixedCleat);
   const ready = prep?.slip && prep.slip.workCleatId === workCleat ? prep : undefined;
   if (!ready && sim.lines.slipsInUse >= MAX_SLIP_LINES) return `Beide Manöverleinen sind schon in Gebrauch (${MAX_SLIP_LINES} an Bord)`;
+  if (doubled && !ready && sim.lines.cockpitInUse >= MAX_COCKPIT_LINES) return winchesBusy();
   const pre = reachError(sim, fixedCleat, anchor, solo(sim) ? SOLO_PLAN_AHEAD : 0);
   if (pre) return pre;
   const failTooShort = () => `Manöverleine zu kurz (max. ${sim.lines.settings.slipMaxLength} m)`;
@@ -214,6 +231,7 @@ export function orderPrepareSlip(sim: Simulation, fixedCleat: string, workCleat:
   if (sim.lines.preparedAt(fixedCleat)) return `An ${cleatName(sim, fixedCleat)} liegt schon eine Leine bereit`;
   if (sim.lines.slipsInUse >= MAX_SLIP_LINES) return `Beide Manöverleinen sind schon in Gebrauch (${MAX_SLIP_LINES} an Bord)`;
   const doubled = fixedCleat === workCleat;
+  if (doubled && sim.lines.cockpitInUse >= MAX_COCKPIT_LINES) return winchesBusy();
   const steps: CrewStep[] = [
     { at: cleatPos(sim, fixedCleat), seconds: SOLO_SECONDS.prepare, label: `belegt Manöverleine auf ${cleatName(sim, fixedCleat)}`, check: () => tooLate(sim) },
   ];
@@ -237,20 +255,30 @@ export function orderPrepareSlip(sim: Simulation, fixedCleat: string, workCleat:
   return null;
 }
 
-/** Holepart einer vorbereiteten Manöverleine schon ins Cockpit führen. */
+/**
+ * Holepart einer vorbereiteten Leine schon ins Cockpit führen: Manöverleine
+ * über ihre zweite Klampe, Festmacher über seine Klampe umgelenkt.
+ */
 export function orderPreparedLeadAft(sim: Simulation, id: number): string | null {
   const p = sim.lines.prepared.find((x) => x.id === id);
-  if (!p?.slip || p.slip.cockpit) return null;
+  if (!p || (p.slip ? p.slip.cockpit : p.cockpit)) return null;
   const blocked = prepBlocked(sim);
   if (blocked) return blocked;
+  if (sim.lines.cockpitInUse >= MAX_COCKPIT_LINES) return winchesBusy();
+  const what = p.slip ? 'Manöverleine' : 'Festmacher';
   sim.crew.order({
-    label: `Manöverleine an ${cleatName(sim, p.cleatId)} ins Cockpit führen`,
-    steps: [{ at: cleatPos(sim, p.slip.workCleatId), seconds: SOLO_SECONDS.leadAft, label: 'führt Holepart nach achtern', check: () => tooLate(sim) }],
+    label: `${what} an ${cleatName(sim, p.cleatId)} ins Cockpit führen`,
+    steps: [{ at: cleatPos(sim, p.slip ? p.slip.workCleatId : p.cleatId), seconds: SOLO_SECONDS.leadAft, label: 'führt Holepart nach achtern', check: () => tooLate(sim) }],
     run: () => {
       const q = sim.lines.prepared.find((x) => x.id === id);
-      if (!q?.slip) return;
-      q.slip.cockpit = true;
-      sim.addLog(`Vorbereitete Manöverleine an ${cleatName(sim, q.cleatId)}: Holepart liegt im Cockpit`, 'info');
+      if (!q) return;
+      if (sim.lines.cockpitInUse >= MAX_COCKPIT_LINES) {
+        sim.addLog(winchesBusy(), 'warn');
+        return;
+      }
+      if (q.slip) q.slip.cockpit = true;
+      else q.cockpit = true;
+      sim.addLog(`Vorbereiteter ${what} an ${cleatName(sim, q.cleatId)}: Holepart liegt im Cockpit`, 'info');
     },
   });
   return null;
@@ -307,22 +335,39 @@ export function orderLine(sim: Simulation, id: number, act: LineMode | 'release'
   });
 }
 
-/** Holepart einer Manöverleine an Deck nach achtern ins Cockpit führen (oder zurück an die Klampe). */
-export function orderLeadAft(sim: Simulation, id: number, aft: boolean): void {
+/**
+ * Holepart an Deck nach achtern ins Cockpit führen (oder zurück an die
+ * Klampe). Manöverleine: von ihrer zweiten Klampe; Festmacher: bleibt an
+ * Land fest und läuft an Bord über seine Klampe umgelenkt auf die Winsch.
+ * Rückgabe: Fehlermeldung, wenn keine Winsch frei ist.
+ */
+export function orderLeadAft(sim: Simulation, id: number, aft: boolean): string | null {
   const l = sim.lines.lines.find((x) => x.id === id);
-  if (!l?.slip || !!l.cockpit === aft) return;
+  if (!l || !!l.cockpit === aft) return null;
+  if (aft && sim.lines.cockpitInUse >= MAX_COCKPIT_LINES) return winchesBusy();
+  const what = l.slip ? 'Manöverleine' : 'Leine';
   sim.crew.order({
-    label: aft ? `Manöverleine ${id} ins Cockpit führen` : `Manöverleine ${id} an die Klampe`,
+    label: aft ? `${what} ${id} ins Cockpit führen` : `${what} ${id} an die Klampe`,
     lineId: id,
     steps: [{ at: cleatPos(sim, l.cleatId), seconds: SOLO_SECONDS.leadAft, label: aft ? `führt Leine ${id} nach achtern` : `belegt Leine ${id} an der Klampe` }],
     run: () => {
       const line = sim.lines.lines.find((x) => x.id === id);
       if (!line) return;
+      if (aft && sim.lines.cockpitInUse >= MAX_COCKPIT_LINES) {
+        sim.addLog(winchesBusy(), 'warn');
+        return;
+      }
       line.cockpit = aft;
       if (aft && line.mode !== 'cleated') line.mode = 'cleated';
-      sim.addLog(aft ? `Manöverleine ${id} ins Cockpit geführt – Bedienung vom Ruder aus` : `Manöverleine ${id} wieder an der Klampe`, 'info');
+      sim.addLog(
+        aft
+          ? `${what} ${id} ${line.slip ? '' : `über ${cleatName(sim, line.cleatId)} `}ins Cockpit geführt – Bedienung vom Ruder aus`
+          : `${what} ${id} wieder an der Klampe`,
+        'info',
+      );
     },
   });
+  return null;
 }
 
 /** Fender einer Seite ausbringen bzw. einholen. */

@@ -97,12 +97,18 @@ export interface MooringLine {
    * arbeitet; `slack` ist die Lose der ganzen Leine.
    */
   slip?: SlipLeg;
-  /** Manöverleine: Holepart an Deck nach achtern ins Cockpit geführt (Bedienung vom Ruder aus) */
+  /**
+   * Holepart an Deck nach achtern ins Cockpit geführt (Bedienung vom Ruder
+   * aus). Manöverleine: über die zweite Klampe; Festmacher: fest an Land,
+   * an Bord über seine Klampe umgelenkt bis auf die Winsch.
+   */
   cockpit?: boolean;
 }
 
 /** Ausrüstung: so viele Manöverleinen sind an Bord */
 export const MAX_SLIP_LINES = 2;
+/** Zwei Winschen im Cockpit: höchstens so viele Leinen lassen sich dort bedienen */
+export const MAX_COCKPIT_LINES = 2;
 /**
  * Läuft die Holepart einer Manöverleine über dieselbe Klampe wie die feste
  * Part (doppelt über die Achterklampe, direkt ins Cockpit), bremst die
@@ -112,6 +118,9 @@ export const CLEAT_TURN_FRICTION = 1.5;
 
 /** Manöverleine, deren beide Parten über dieselbe Klampe laufen */
 export const isDoubled = (l: { cleatId: string; slip?: { cleatId: string } }): boolean => !!l.slip && l.slip.cleatId === l.cleatId;
+
+/** Holepart läuft über eine Klampe umgelenkt ins Cockpit (doppelte Manöverleine oder Festmacher im Cockpit). */
+export const turnsAtCleat = (l: MooringLine): boolean => isDoubled(l) || (!l.slip && !!l.cockpit);
 
 /**
  * Vorbereitete Leine: an der Klampe belegt und klar über der Reling, noch
@@ -123,7 +132,12 @@ export interface PreparedLine {
   id: number;
   cleatId: string;
   slip?: { workCleatId: string; cockpit: boolean };
+  /** Festmacher: Holepart schon über die Klampe ins Cockpit geführt */
+  cockpit?: boolean;
 }
+
+/** Liegt die Holepart einer vorbereiteten Leine im Cockpit? */
+export const preparedInCockpit = (p: PreparedLine): boolean => !!(p.slip ? p.slip.cockpit : p.cockpit);
 
 /** Kürzeste Wurfdistanz von der Bordkante (Deckskontur) zu einem Punkt [m]. */
 export function throwDistance(yacht: Yacht, target: Vec2): number {
@@ -275,6 +289,11 @@ export class LineSystem {
     return this.slipCount + this.prepared.filter((p) => p.slip).length;
   }
 
+  /** Winschen im Cockpit in Gebrauch (ausgebrachte und vorbereitete Leinen) */
+  get cockpitInUse(): number {
+    return this.lines.filter((l) => l.cockpit).length + this.prepared.filter(preparedInCockpit).length;
+  }
+
   preparedAt(cleatId: string): PreparedLine | undefined {
     return this.prepared.find((p) => p.cleatId === cleatId);
   }
@@ -295,11 +314,12 @@ export class LineSystem {
   }
 
   /**
-   * Die beiden ins Cockpit geführten Manöverleinen, sortiert von links nach
-   * rechts (Lage des Festpunkts querab vom Boot aus gesehen), sonst null.
+   * Die beiden ins Cockpit geführten Leinen (Manöverleinen oder Festmacher),
+   * sortiert von links nach rechts (Lage des Festpunkts querab vom Boot aus
+   * gesehen), sonst null.
    */
   cockpitPair(yacht: Yacht): [MooringLine, MooringLine] | null {
-    const ls = this.lines.filter((l) => l.slip && l.cockpit);
+    const ls = this.lines.filter((l) => l.cockpit);
     if (ls.length !== 2) return null;
     const st = yacht.state;
     const side = (l: MooringLine) => worldToBody({ x: l.anchor.pos.x - st.pos.x, y: l.anchor.pos.y - st.pos.y }, st.psi).y;
@@ -346,7 +366,7 @@ export class LineSystem {
       const a = pair ? (line === pair[0] ? amounts[0] : line === pair[1] ? amounts[1] : 0) : 0;
       if (a > 0.02) {
         // dosiert fieren vom Cockpit aus (über die Winsch): je mehr, desto weniger Bremse
-        const turn = isDoubled(line) ? CLEAT_TURN_FRICTION : 1;
+        const turn = turnsAtCleat(line) ? CLEAT_TURN_FRICTION : 1;
         const brake = (s.easeForce + (s.handHoldForce - s.easeForce) * (1 - a)) * turn;
         if (tension > brake) tension = slipAbove(line, tension, brake, k, 2.5 * dt);
         else if (tension > 20) line.length += s.easeRate * a * dt;
