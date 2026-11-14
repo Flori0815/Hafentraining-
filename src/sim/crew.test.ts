@@ -268,3 +268,76 @@ describe('Manöverleine doppelt über die Achterklampe', () => {
   });
 
 });
+
+describe('Festmacher über die Klampe ins Cockpit', () => {
+  /** Vor- und Achterleine an Pollern, dichtgeholt und belegt; ablandiger Wind belastet beide */
+  function twoLines(mode: CrewMode = 'crew') {
+    const sim = setup(mode, { ...CALM, windSpeedKn: 15, windFromDeg: 0 });
+    for (const c of ['bow-p', 'stern-p']) expect(orderThrow(sim, c, bollardAt(sim, c))).toBeNull();
+    runUntil(sim, () => !sim.crew.busy && sim.lines.lines.length === 2, 60);
+    for (const l of sim.lines.lines) orderLine(sim, l.id, 'heave');
+    runUntil(sim, () => false, 5);
+    for (const l of sim.lines.lines) orderLine(sim, l.id, 'cleated');
+    return sim;
+  }
+
+  it('Festmacher im Cockpit: Regler fieren und lenken, Umlenkung an der Klampe bremst', () => {
+    const sim = twoLines();
+    for (const l of sim.lines.lines) expect(orderLeadAft(sim, l.id, true)).toBeNull();
+    const pair = sim.lines.cockpitPair(sim.yacht)!;
+    expect(pair).not.toBeNull();
+    expect(pair.every((l) => !l.slip && l.cockpit && l.mode === 'cleated')).toBe(true);
+    runUntil(sim, () => false, 3);
+    const len0 = pair.map((l) => l.length);
+    sim.lines.ease = 0.5;
+    runUntil(sim, () => false, 4);
+    pair.forEach((l, i) => expect(l.length).toBeGreaterThan(len0[i] + 0.2));
+  });
+
+  it('zählt weiter als Festmacher (Manöverleinen nicht)', async () => {
+    const { checkRequirements } = await import('./evaluation');
+    const sim = twoLines();
+    const berth = sim.targetBerth!;
+    const before = checkRequirements(berth, sim.yacht, sim.lines.lines).reduce((n, r) => n + r.ok + r.slack.length + r.notCleated, 0);
+    for (const l of sim.lines.lines) orderLeadAft(sim, l.id, true);
+    const after = checkRequirements(berth, sim.yacht, sim.lines.lines).reduce((n, r) => n + r.ok + r.slack.length + r.notCleated, 0);
+    expect(before).toBeGreaterThan(0);
+    expect(after).toBe(before);
+  });
+
+  it('höchstens zwei Leinen im Cockpit (zwei Winschen)', () => {
+    const sim = twoLines();
+    for (const l of sim.lines.lines) orderLeadAft(sim, l.id, true);
+    expect(orderThrow(sim, 'mid-p', bollardAt(sim, 'mid-p'))).toBeNull();
+    const third = sim.lines.lines.find((l) => l.cleatId === 'mid-p')!;
+    expect(orderLeadAft(sim, third.id, true)).toMatch(/Winschen/);
+    expect(third.cockpit).toBeFalsy();
+    // auch die doppelte Manöverleine braucht eine Winsch
+    expect(orderSlip(sim, 'stern-s', bollardAt(sim, 'stern-s'), 'stern-s')).toMatch(/Winschen/);
+  });
+
+  it('Einhand: vorbereiteter Festmacher im Cockpit liegt nach dem Wurf auf der Winsch', () => {
+    const sim = setup('solo');
+    sim.yacht.state.pos = { x: -10, y: -12 };
+    expect(orderPrepare(sim, 'bow-p')).toBeNull();
+    runUntil(sim, () => !sim.crew.busy, 60);
+    const prep = sim.lines.preparedAt('bow-p')!;
+    expect(orderPreparedLeadAft(sim, prep.id)).toBeNull();
+    runUntil(sim, () => !sim.crew.busy && sim.crew.atHelm, 60);
+    expect(prep.cockpit).toBe(true);
+    expect(sim.lines.cockpitInUse).toBe(1);
+    const st = sim.yacht.state;
+    st.pos = { x: 29, y: -2.05 };
+    st.psi = Math.PI / 2;
+    st.u = st.v = st.r = 0;
+    expect(orderThrow(sim, 'bow-p', bollardAt(sim, 'bow-p'))).toBeNull();
+    runUntil(sim, () => sim.lines.lines.length > 0);
+    const l = sim.lines.lines[0];
+    expect(l.slip).toBeUndefined();
+    expect(l.cockpit).toBe(true);
+    expect(l.mode).toBe('cleated');
+    expect(sim.crew.attending).toBeNull();
+    runUntil(sim, () => sim.crew.atHelm, 20);
+    expect(sim.crew.atHelm).toBe(true);
+  });
+});

@@ -592,8 +592,8 @@ export class Renderer {
       const a = y.cleatWorld(p.cleatId);
       if (!a) continue;
       const s = this.toScreen(a);
-      if (p.slip) {
-        const end = p.slip.cockpit ? y.toWorld(sim.crew.helm) : y.cleatWorld(p.slip.workCleatId);
+      if (p.slip || p.cockpit) {
+        const end = p.slip ? (p.slip.cockpit ? y.toWorld(sim.crew.helm) : y.cleatWorld(p.slip.workCleatId)) : y.toWorld(sim.crew.helm);
         if (end) {
           const e = this.toScreen(end);
           ctx.strokeStyle = 'rgba(251,191,36,0.85)';
@@ -695,6 +695,18 @@ export class Renderer {
       const a = this.toScreen(y.toWorld(cleat.pos));
       const b = this.toScreen(l.anchor.pos);
       const width = ia.selectedLine === l.id ? 3.5 : 2;
+      if (l.cockpit) {
+        // Holepart an Deck von der Klampe nach achtern auf die Winsch
+        const h = this.toScreen(y.toWorld(sim.crew.helm));
+        ctx.strokeStyle = 'rgba(251,191,36,0.85)';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(h.x, h.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       if (l.slip) {
         // Manöverleine: feste Part von der zweiten Klampe zum Festpunkt, gestrichelt markiert
         const fc = y.cleatWorld(l.slip.cleatId);
